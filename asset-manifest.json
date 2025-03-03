@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/life_tracker_dashboard/static/css/main.f855e6bc.css",
+    "main.css": "/life_tracker_dashboard/static/css/main.f8a85292.css",
     "main.js": "/life_tracker_dashboard/static/js/main.1661f443.js",
     "static/js/453.db28bc18.chunk.js": "/life_tracker_dashboard/static/js/453.db28bc18.chunk.js",
     "index.html": "/life_tracker_dashboard/index.html",
-    "main.f855e6bc.css.map": "/life_tracker_dashboard/static/css/main.f855e6bc.css.map",
+    "main.f8a85292.css.map": "/life_tracker_dashboard/static/css/main.f8a85292.css.map",
     "main.1661f443.js.map": "/life_tracker_dashboard/static/js/main.1661f443.js.map",
     "453.db28bc18.chunk.js.map": "/life_tracker_dashboard/static/js/453.db28bc18.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.f855e6bc.css",
+    "static/css/main.f8a85292.css",
     "static/js/main.1661f443.js"
   ]
 }
