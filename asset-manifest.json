@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/life_tracker_dashboard/static/css/main.f855e6bc.css",
+    "main.js": "/life_tracker_dashboard/static/js/main.8d6becb7.js",
+    "static/js/453.db28bc18.chunk.js": "/life_tracker_dashboard/static/js/453.db28bc18.chunk.js",
+    "index.html": "/life_tracker_dashboard/index.html",
+    "main.f855e6bc.css.map": "/life_tracker_dashboard/static/css/main.f855e6bc.css.map",
+    "main.8d6becb7.js.map": "/life_tracker_dashboard/static/js/main.8d6becb7.js.map",
+    "453.db28bc18.chunk.js.map": "/life_tracker_dashboard/static/js/453.db28bc18.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.f855e6bc.css",
+    "static/js/main.8d6becb7.js"
+  ]
+}
