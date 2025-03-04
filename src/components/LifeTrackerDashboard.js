@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, AreaChart, Area } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import _ from 'lodash';
 
 const LifeTrackerDashboard = () => {
@@ -12,8 +12,7 @@ const LifeTrackerDashboard = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   
   // Historical tracking state
-  const [dateRange, setDateRange] = useState('30days'); // '7days', '30days', '90days', '365days', 'all'
-  const [timeGrouping, setTimeGrouping] = useState('day'); // 'day', 'week', 'month'
+  const [dateRange] = useState('all'); // Using 'all' as default to show all data
   
   // Goals customization state
   const [showGoalSettings, setShowGoalSettings] = useState(false);
@@ -21,27 +20,156 @@ const LifeTrackerDashboard = () => {
     const savedGoals = localStorage.getItem('lifeTrackerGoals');
     return savedGoals ? JSON.parse(savedGoals) : {
       social: {
-        familyContactDaysPerWeek: 3,
-        friendContactDaysPerWeek: 2,
-        katSmilePercentage: 70,
-        katReviewsPerMonth: 4,
-        newPhoneNumbersTarget: 5,
-        newHangoutsTarget: 2
+        familyContactDaysPerWeek: {
+          value: 3,
+          description: "Talk to family at least 3 days per week",
+          targetDate: "rolling", // Monthly rolling average
+          category: "Maintain connections"
+        },
+        friendContactDaysPerWeek: {
+          value: 2,
+          description: "Talk to old friends at least 2 days per week",
+          targetDate: "rolling", // Monthly rolling average
+          category: "Maintain connections"
+        },
+        katSmilePercentage: {
+          value: 70,
+          description: "Did something nice for Kat most days",
+          targetDate: "rolling", // No specific deadline
+          category: "Kat"
+        },
+        katReviewsPerMonth: {
+          value: 4,
+          description: "Do a review with Kat at least once per week",
+          targetDate: "rolling", // Weekly 
+          category: "Kat"
+        },
+        newPhoneNumbersTarget: {
+          value: 5,
+          description: "Get 5 new phone numbers by May",
+          targetDate: "2025-05-01", // By May 2025
+          category: "Make friends"
+        },
+        newHangoutsTarget: {
+          value: 2,
+          description: "Hang out with at least 2 new people by May",
+          targetDate: "2025-05-01", // By May 2025
+          category: "Make friends"
+        }
       },
-      mentalHealth: {
-        journalingPercentage: 60,
-        meditationPercentage: 50,
-        epicActivitiesPerMonth: 4
+      wellbeing: {
+        journalingPercentage: {
+          value: 60,
+          description: "Journal morning and night >60% of days",
+          targetDate: "rolling", // Monthly rolling average
+          category: "Journaling"
+        },
+        meditationPercentage: {
+          value: 50,
+          description: "Meditation/prayer >50% of days",
+          targetDate: "rolling", // Monthly rolling average
+          category: "Meditation/Prayer"
+        },
+        epicActivitiesPerMonth: {
+          value: 4,
+          description: "Something epic at least once per week",
+          targetDate: "rolling", // Monthly rolling average
+          category: "Do epic shit"
+        }
       },
       health: {
-        strengthChallengeTarget: 400,
-        sleepOnTimePercentage: 90
+        strengthChallengeTarget: {
+          value: 400,
+          description: "400 challenge by May 1st",
+          targetDate: "2025-05-01", // By May 1st 2025
+          category: "Strength"
+        },
+        ax1Target: {
+          value: 100,
+          description: "Finish AX1 by Jan 1 2026",
+          targetDate: "2026-01-01", // By Jan 1st 2026
+          category: "Strength"
+        },
+        climbBoulderTarget: {
+          value: 6,
+          description: "Climb v6 boulder by April 1st",
+          targetDate: "2025-04-01", // By April 1st 2025
+          category: "Climbing"
+        },
+        climbOutsideTarget: {
+          value: 12,
+          description: "Climb 5.12 outside by 2027",
+          targetDate: "2027-01-01", // By 2027
+          category: "Climbing"
+        },
+        run10KTarget56: {
+          value: 56,
+          description: "Run 56 minute 10K by June",
+          targetDate: "2025-06-01", // By June 2025
+          category: "Running"
+        },
+        run10KTarget52: {
+          value: 52,
+          description: "Run a 52 minute 10K by 2026",
+          targetDate: "2026-01-01", // By 2026
+          category: "Running"
+        },
+        vo2MaxTarget: {
+          value: 53,
+          description: "VO2 max above 53 in Denver by 2026",
+          targetDate: "2026-01-01", // By 2026
+          category: "Running"
+        },
+        cholesterolTarget: {
+          value: 150,
+          description: "Cholesterol < 150 by end of year",
+          targetDate: "2025-12-31", // By end of 2025
+          category: "Direct metrics"
+        },
+        hdlTarget: {
+          value: 60,
+          description: "HDL > 60 by end of year",
+          targetDate: "2025-12-31", // By end of 2025
+          category: "Direct metrics"
+        },
+        bpTarget: {
+          value: "120/80",
+          description: "BP monthly rolling average < 120/80",
+          targetDate: "2025-12-31", // By 2025
+          category: "Direct metrics"
+        },
+        sleepOnTimePercentage: {
+          value: 90,
+          description: "90% within one hour of bedtime weekly average by 2025",
+          targetDate: "2025-12-31", // By 2025
+          category: "Sleep"
+        }
       },
       productivity: {
-        languageDaysPercentage: 50,
-        mathDaysPercentage: 50,
-        codeDaysPercentage: 50,
-        lessonsPerMonth: 4
+        languageDaysPercentage: {
+          value: 50,
+          description: "Language practice >50% of days",
+          targetDate: "rolling", // Monthly rolling average
+          category: "Learning"
+        },
+        mathDaysPercentage: {
+          value: 50,
+          description: "Math practice >50% of days",
+          targetDate: "rolling", // Monthly rolling average
+          category: "Learning"
+        },
+        codeDaysPercentage: {
+          value: 50,
+          description: "Coding practice >50% of days",
+          targetDate: "rolling", // Monthly rolling average
+          category: "Learning"
+        },
+        lessonsPerMonth: {
+          value: 4,
+          description: "Complete at least one lesson per week",
+          targetDate: "rolling", // Monthly rolling average
+          category: "Learning"
+        }
       }
     };
   });
@@ -63,15 +191,43 @@ const LifeTrackerDashboard = () => {
     localStorage.setItem('lifeTrackerGoals', JSON.stringify(goals));
   }, [goals]);
 
-  // Initialize the Google API client
+  // Initialize the Google API client with new Google Identity Services
   useEffect(() => {
-    const loadGoogleAPI = () => {
-      const script = document.createElement('script');
-      script.src = 'https://apis.google.com/js/api.js';
-      script.async = true;
-      script.defer = true;
-      script.onload = initClient;
-      document.body.appendChild(script);
+    // For browser debugging
+    window.clearToken = () => {
+      localStorage.removeItem('gapi_token');
+      console.log("Token cleared from localStorage");
+    };
+    
+    const loadGoogleAPI = async () => {
+      console.log("Starting Google API loading process");
+      
+      // First load the gapi.client for API calls
+      const gapiScript = document.createElement('script');
+      gapiScript.src = 'https://apis.google.com/js/api.js';
+      gapiScript.async = true;
+      gapiScript.defer = true;
+      document.body.appendChild(gapiScript);
+      
+      // Wait for gapi to load
+      await new Promise((resolve) => {
+        gapiScript.onload = () => {
+          console.log("GAPI script loaded");
+          resolve();
+        };
+      });
+      
+      // Now load the new Google Identity Services
+      const gisScript = document.createElement('script');
+      gisScript.src = 'https://accounts.google.com/gsi/client';
+      gisScript.async = true;
+      gisScript.defer = true;
+      document.body.appendChild(gisScript);
+      
+      gisScript.onload = () => {
+        console.log("GIS script loaded");
+        initClient();
+      };
     };
 
     loadGoogleAPI();
@@ -92,54 +248,156 @@ const LifeTrackerDashboard = () => {
     };
   }, [autoRefresh, refreshInterval, isAuthenticated]);
 
-  const initClient = () => {
+  const initClient = async () => {
     setIsLoading(true);
-    window.gapi.load('client:auth2', () => {
-      window.gapi.client.init({
-        apiKey: API_KEY,
-        clientId: CLIENT_ID,
-        discoveryDocs: DISCOVERY_DOCS,
-        scope: SCOPES
-      }).then(() => {
-        // Listen for sign-in state changes
-        window.gapi.auth2.getAuthInstance().isSignedIn.listen(updateSigninStatus);
-        
-        // Handle the initial sign-in state
-        updateSigninStatus(window.gapi.auth2.getAuthInstance().isSignedIn.get());
-        setIsLoading(false);
-      }).catch(error => {
-        setError('Error initializing Google API client: ' + error.details);
-        setIsLoading(false);
+    try {
+      console.log("Initializing client...");
+      
+      // Initialize gapi.client
+      await new Promise((resolve, reject) => {
+        window.gapi.load('client', {
+          callback: () => {
+            console.log("GAPI client loaded");
+            resolve();
+          },
+          onerror: (err) => {
+            console.error("Error loading GAPI client:", err);
+            reject(err);
+          }
+        });
       });
-    });
-  };
-
-  const updateSigninStatus = (isSignedIn) => {
-    setIsAuthenticated(isSignedIn);
-    if (isSignedIn) {
-      fetchSheetData();
+      
+      // Initialize the client with API key and discoveryDocs
+      console.log("Initializing GAPI client with API key and discovery docs");
+      await window.gapi.client.init({
+        apiKey: API_KEY,
+        discoveryDocs: DISCOVERY_DOCS,
+      });
+      console.log("GAPI client initialized successfully");
+      
+      // Let's directly go for auth - don't try to restore from localStorage
+      // It seems that approach wasn't working correctly
+      
+      // Initialize Google Identity Services
+      console.log("Setting up token client");
+      window.tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: (tokenResponse) => {
+          console.log("Token client callback received", 
+                    tokenResponse.error ? "with error" : "successfully");
+          
+          if (tokenResponse.error) {
+            console.error("Auth error details:", tokenResponse);
+            setError('Error authenticating: ' + tokenResponse.error);
+            setIsAuthenticated(false);
+          } else {
+            console.log("Authentication successful");
+            setIsAuthenticated(true);
+            
+            // First check if we can load the Sheets API
+            if (window.gapi.client.getToken() && !window.gapi.client.sheets) {
+              console.log("Loading sheets API...");
+              window.gapi.client.load('sheets', 'v4')
+                .then(() => {
+                  console.log("Sheets API loaded, fetching data");
+                  fetchSheetData();
+                })
+                .catch(err => {
+                  console.error("Error loading sheets API:", err);
+                  setError('Error loading Google Sheets API: ' + err.message);
+                });
+            } else {
+              console.log("Sheets API already available, fetching data");
+              fetchSheetData();
+            }
+          }
+          setIsLoading(false);
+        }
+      });
+      
+      // Check if we're already signed in
+      console.log("Checking for existing authentication");
+      const hasToken = window.gapi.client.getToken() !== null;
+      console.log("Has existing token:", hasToken);
+      
+      if (hasToken) {
+        console.log("User is already authenticated");
+        setIsAuthenticated(true);
+        
+        // Make sure sheets API is loaded
+        if (!window.gapi.client.sheets) {
+          console.log("Loading sheets API for existing session...");
+          await window.gapi.client.load('sheets', 'v4');
+          console.log("Sheets API loaded for existing session");
+        }
+        
+        fetchSheetData();
+      } else {
+        console.log("No existing authentication, user will need to sign in");
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error("Init client error:", error);
+      setError('Error initializing Google API client: ' + error.message);
+      setIsLoading(false);
     }
   };
 
   const handleAuthClick = () => {
-    if (window.gapi.auth2.getAuthInstance().isSignedIn.get()) {
-      window.gapi.auth2.getAuthInstance().signOut();
+    if (window.gapi.client.getToken() !== null) {
+      // User is signed in, so sign out
+      window.google.accounts.oauth2.revoke(window.gapi.client.getToken().access_token, () => {
+        window.gapi.client.setToken(null);
+        localStorage.removeItem('gapi_token');
+        setIsAuthenticated(false);
+        setData([]);
+      });
     } else {
-      window.gapi.auth2.getAuthInstance().signIn();
+      // User is not signed in, so sign in
+      window.tokenClient.requestAccessToken();
     }
   };
 
   const fetchSheetData = () => {
+    console.log("Fetching sheet data...");
     setIsLoading(true);
+    
+    // Safety check
+    if (!window.gapi?.client?.getToken || !window.gapi?.client?.sheets) {
+      console.error("Cannot fetch data: Google API not properly initialized");
+      console.log("GAPI client state:", window.gapi?.client ? "exists" : "missing");
+      console.log("Sheets API state:", window.gapi?.client?.sheets ? "exists" : "missing");
+      console.log("GetToken function state:", window.gapi?.client?.getToken ? "exists" : "missing");
+      
+      setError('API initialization error: Please reload the page and reconnect');
+      setIsLoading(false);
+      return;
+    }
+    
+    // Token check
+    if (!window.gapi.client.getToken()) {
+      console.error("Cannot fetch data: No authentication token");
+      setError('Authentication required: Please connect to Google Sheets');
+      setIsLoading(false);
+      return;
+    }
+    
+    console.log(`Requesting data from spreadsheet: ${SPREADSHEET_ID}, sheet: ${SHEET_NAME}`);
+    
     window.gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: `${SHEET_NAME}!A:AZ` // This will fetch all columns
     }).then(response => {
+      console.log("Received sheet data response");
+      
       const range = response.result;
       if (range.values && range.values.length > 0) {
         // Process the data - first row contains headers
         const headers = range.values[0];
         const rows = range.values.slice(1);
+        
+        console.log(`Successfully loaded ${rows.length} data rows from sheet`);
         
         // Convert to array of objects with proper keys
         const processedData = rows.map(row => {
@@ -179,10 +437,32 @@ const LifeTrackerDashboard = () => {
         const sortedData = _.sortBy(processedData, 'date');
         setData(sortedData);
         setLastUpdated(new Date());
+        
+        // Clear any previous errors
+        setError(null);
+      } else {
+        console.warn("No data found in the sheet or empty response");
+        console.log("Response content:", range);
+        setError('No data found in the spreadsheet or invalid format.');
       }
       setIsLoading(false);
     }).catch(error => {
-      setError('Error fetching sheet data: ' + error.result?.error?.message || 'Unknown error');
+      console.error("Sheet data fetch error:", error);
+      console.log("Error details:", JSON.stringify(error, null, 2));
+      
+      // Check if it's an authentication error
+      if (error.status === 401 || error.status === 403 || 
+          (error.result && error.result.error && 
+           (error.result.error.status === 'UNAUTHENTICATED' || 
+            error.result.error.status === 'PERMISSION_DENIED'))) {
+            
+        console.log("Authentication error detected, resetting auth state");
+        setIsAuthenticated(false);
+        setError('Authentication error: Please reconnect to Google Sheets');
+      } else {
+        setError('Error fetching sheet data: ' + (error.result?.error?.message || error.message || 'Unknown error'));
+      }
+      
       setIsLoading(false);
     });
   };
@@ -226,24 +506,14 @@ const LifeTrackerDashboard = () => {
 
   // Group data by time period for historical charts
   const getGroupedHistoricalData = useCallback((metric) => {
-    const filteredData = getFilteredData();
-    if (filteredData.length === 0) return [];
+    const allData = data; // Use all data regardless of date range
+    if (allData.length === 0) return [];
     
-    let groupKey;
-    switch (timeGrouping) {
-      case 'week':
-        groupKey = entry => `${entry.year}-W${entry.week.toString().padStart(2, '0')}`;
-        break;
-      case 'month':
-        groupKey = entry => `${entry.year}-${entry.month.toString().padStart(2, '0')}`;
-        break;
-      case 'day':
-      default:
-        groupKey = entry => entry.formattedDate;
-    }
+    // We'll group by month for a cleaner view of long-term trends
+    const groupKey = entry => `${entry.year}-${entry.month.toString().padStart(2, '0')}`;
     
     // Group the data
-    const groupedEntries = _.groupBy(filteredData, groupKey);
+    const groupedEntries = _.groupBy(allData, groupKey);
     
     // Calculate the metric for each group
     return Object.entries(groupedEntries).map(([period, entries]) => {
@@ -257,7 +527,7 @@ const LifeTrackerDashboard = () => {
       // Sort by period
       return a.period.localeCompare(b.period);
     });
-  }, [getFilteredData, timeGrouping]);
+  }, [data]);
 
   // Calculate specific metric for a group of entries
   const calculateMetricForEntries = (entries, metric) => {
@@ -272,25 +542,60 @@ const LifeTrackerDashboard = () => {
         return (entries.filter(e => e.evening_journal === 'Yes').length / entries.length) * 100;
       case 'meditation':
         return (entries.filter(e => e.meditation === 'Yes').length / entries.length) * 100;
-      case 'epic_activity':
-        return (entries.filter(e => e.epic_activity === 'Yes').length / entries.length) * 100;
-      case 'strength_total':
-        const strengthEntries = entries.filter(e => e.strength === 'Yes');
+      case 'epic_activity': {
+        // Some entries may have a number in epic_activity (column label is "hours_soc_media")
+        // and others have "Yes"/"No", so handle both
+        const epicCount = entries.filter(e => {
+          return e.epic_activity === 'Yes' || 
+                 (e.epic_activity && e.epic_activity !== 'No' && parseInt(e.epic_activity) > 0);
+        }).length;
+        return (epicCount / entries.length) * 100;
+      }
+      case 'strength_total': {
+        // Check for entries that have the "400" column as "Yes" or strength as "Yes"
+        const strengthEntries = entries.filter(e => e['400'] === 'Yes' || e.strength === 'Yes');
         if (strengthEntries.length === 0) return 0;
-        // Get the most recent strength entry for each period
+        
+        // Get the most recent strength entry for the period
         const latestStrength = strengthEntries[strengthEntries.length - 1];
-        return (latestStrength.pushups || 0) + (latestStrength.rows || 0) + 
-               (latestStrength.situps || 0) + (latestStrength.squats || 0);
+        const total = (
+          parseInt(latestStrength.pushups || 0) + 
+          parseInt(latestStrength.rows || 0) + 
+          parseInt(latestStrength.situps || 0) + 
+          parseInt(latestStrength.squats || 0)
+        );
+        
+        // Handle NaN case
+        return isNaN(total) ? 0 : total;
+      }
       case 'sleep_on_time':
         return (entries.filter(e => e.bed_on_time === 'Yes').length / entries.length) * 100;
-      case 'language':
-        return (entries.filter(e => e.language === 'Yes').length / entries.length) * 100;
+      case 'language': {
+        // Handle both "Yes"/"No" and presence of data in the language column
+        const langCount = entries.filter(e => {
+          return e.language === 'Yes' || 
+                 (e.language && e.language !== 'No' && e.language !== '');
+        }).length;
+        return (langCount / entries.length) * 100;
+      }
       case 'math':
         return (entries.filter(e => e.math === 'Yes').length / entries.length) * 100;
       case 'code':
         return (entries.filter(e => e.code === 'Yes').length / entries.length) * 100;
       case 'lessons':
         return (entries.filter(e => e.complete_lesson === 'Yes').length / entries.length) * 100;
+      case 'vibes': {
+        // Calculate average vibes (assuming it's a numeric field)
+        const validEntries = entries.filter(e => e.vibes && !isNaN(parseInt(e.vibes)));
+        if (validEntries.length === 0) return 0;
+        
+        const total = validEntries.reduce((sum, entry) => sum + parseInt(entry.vibes), 0);
+        return total / validEntries.length;
+      }
+      case 'cardio': {
+        // Calculate percentage of days with cardio
+        return (entries.filter(e => e.cardio === 'Yes').length / entries.length) * 100;
+      }
       default:
         return 0;
     }
@@ -351,9 +656,9 @@ const LifeTrackerDashboard = () => {
       eveningRate: (eveningJournalDays / daysInPeriod) * 100,
       bothRate: (bothJournalDays / daysInPeriod) * 100,
       totalRate: totalRate,
-      progress: (totalRate / goals.mentalHealth.journalingPercentage) * 100
+      progress: (totalRate / goals.wellbeing.journalingPercentage) * 100
     };
-  }, [getFilteredData, goals.mentalHealth.journalingPercentage]);
+  }, [getFilteredData, goals.wellbeing.journalingPercentage]);
 
   // Calculate meditation rate based on filtered data
   const calculateMeditationRate = useCallback(() => {
@@ -367,9 +672,9 @@ const LifeTrackerDashboard = () => {
     return {
       rate: rate,
       daysCount: meditationDays,
-      progress: (rate / goals.mentalHealth.meditationPercentage) * 100
+      progress: (rate / goals.wellbeing.meditationPercentage) * 100
     };
-  }, [getFilteredData, goals.mentalHealth.meditationPercentage]);
+  }, [getFilteredData, goals.wellbeing.meditationPercentage]);
 
   // Calculate 400 challenge progress based on the most recent attempt
   const calculate400ChallengeProgress = useCallback(() => {
@@ -382,11 +687,11 @@ const LifeTrackerDashboard = () => {
     
     const latestEntry = challengeEntries[challengeEntries.length - 1];
     
-    // Sum up the exercises
-    const pushups = latestEntry.pushups || 0;
-    const rows = latestEntry.rows || 0;
-    const situps = latestEntry.situps || 0;
-    const squats = latestEntry.squats || 0;
+    // Get the individual exercises (not cumulative)
+    const pushups = parseInt(latestEntry.pushups || 0);
+    const rows = parseInt(latestEntry.rows || 0);
+    const situps = parseInt(latestEntry.situps || 0);
+    const squats = parseInt(latestEntry.squats || 0);
     
     const total = pushups + rows + situps + squats;
     
@@ -396,7 +701,7 @@ const LifeTrackerDashboard = () => {
       rows: rows,
       situps: situps,
       squats: squats,
-      progress: (total / goals.health.strengthChallengeTarget) * 100
+      progress: (total / goals.health.strengthChallengeTarget.value) * 100
     };
   }, [getFilteredData, goals.health.strengthChallengeTarget]);
 
@@ -470,14 +775,14 @@ const LifeTrackerDashboard = () => {
     
     const epicDays = filteredData.filter(entry => entry.epic_activity === "Yes").length;
     const monthsInPeriod = filteredData.length / 30;
-    const targetEpicDays = goals.mentalHealth.epicActivitiesPerMonth * monthsInPeriod;
+    const targetEpicDays = goals.wellbeing.epicActivitiesPerMonth * monthsInPeriod;
     
     return {
       count: epicDays,
       target: targetEpicDays,
       progress: (epicDays / targetEpicDays) * 100
     };
-  }, [getFilteredData, goals.mentalHealth.epicActivitiesPerMonth]);
+  }, [getFilteredData, goals.wellbeing.epicActivitiesPerMonth]);
 
   // Calculate Kat-related metrics based on filtered data
   const calculateKatMetrics = useCallback(() => {
@@ -532,6 +837,50 @@ const LifeTrackerDashboard = () => {
     };
   }, [getFilteredData, goals.social]);
 
+  // Calculate vibes metrics based on filtered data
+  const calculateVibesMetrics = useCallback(() => {
+    const filteredData = getFilteredData();
+    if (filteredData.length === 0) return { average: 0, count: 0 };
+    
+    // Filter entries with valid vibes data
+    const validEntries = filteredData.filter(entry => 
+      entry.vibes && !isNaN(parseInt(entry.vibes))
+    );
+    
+    if (validEntries.length === 0) return { average: 0, count: 0 };
+    
+    // Calculate total and average
+    const total = validEntries.reduce((sum, entry) => sum + parseInt(entry.vibes), 0);
+    const average = total / validEntries.length;
+    
+    return {
+      average: average,
+      count: validEntries.length
+    };
+  }, [getFilteredData]);
+  
+  // Calculate cardio metrics based on filtered data
+  const calculateCardioMetrics = useCallback(() => {
+    const filteredData = getFilteredData();
+    if (filteredData.length === 0) return { rate: 0, count: 0 };
+    
+    const cardioEntries = filteredData.filter(entry => entry.cardio === 'Yes');
+    const rate = (cardioEntries.length / filteredData.length) * 100;
+    
+    // Calculate total miles
+    const totalMiles = cardioEntries.reduce((sum, entry) => {
+      const miles = parseFloat(entry.miles || 0);
+      return sum + (isNaN(miles) ? 0 : miles);
+    }, 0);
+    
+    return {
+      rate: rate,
+      count: cardioEntries.length,
+      totalMiles: totalMiles,
+      averageMiles: cardioEntries.length > 0 ? totalMiles / cardioEntries.length : 0
+    };
+  }, [getFilteredData]);
+
   // Compile all metrics for overview
   const getAllMetrics = useCallback(() => {
     return {
@@ -539,16 +888,18 @@ const LifeTrackerDashboard = () => {
         family: calculateFamilyContactRate(),
         friends: calculateFriendContactRate(),
         kat: calculateKatMetrics(),
-        newConnections: getNewConnectionsMetrics()
+        newConnections: getNewConnectionsMetrics(),
+        vibes: calculateVibesMetrics()
       },
-      mentalHealth: {
+      wellbeing: {
         journaling: calculateJournalingRate(),
         meditation: calculateMeditationRate(),
         epic: getEpicActivityCount()
       },
       health: {
         strength: calculate400ChallengeProgress(),
-        sleep: calculateSleepMetrics()
+        sleep: calculateSleepMetrics(),
+        cardio: calculateCardioMetrics()
       },
       productivity: calculateProductivityMetrics()
     };
@@ -557,58 +908,264 @@ const LifeTrackerDashboard = () => {
     calculateFriendContactRate, 
     calculateKatMetrics, 
     getNewConnectionsMetrics,
+    calculateVibesMetrics,
     calculateJournalingRate,
     calculateMeditationRate,
     getEpicActivityCount,
     calculate400ChallengeProgress,
     calculateSleepMetrics,
+    calculateCardioMetrics,
     calculateProductivityMetrics
   ]);
 
-  // Format for radar chart
-  const prepareRadarData = useCallback(() => {
+  // Helper function to safely access nested properties
+  const safeGet = (obj, path, defaultValue = 0) => {
+    try {
+      const parts = path.split('.');
+      let result = obj;
+      for (const part of parts) {
+        if (result === undefined || result === null) return defaultValue;
+        result = result[part];
+      }
+      return result === undefined || result === null || isNaN(result) ? defaultValue : result;
+    } catch (e) {
+      console.warn(`Error accessing path ${path}:`, e);
+      return defaultValue;
+    }
+  };
+
+  // Function to calculate projections for each goal
+  const calculateProjections = useCallback(() => {
     const metrics = getAllMetrics();
-    return [
-      {
-        subject: 'Social',
-        A: (metrics.social.family.progress + 
-            metrics.social.friends.progress + 
-            metrics.social.kat.smile.progress + 
-            metrics.social.kat.review.progress) / 4,
-        fullMark: 100,
-      },
-      {
-        subject: 'Mental Health',
-        A: (metrics.mentalHealth.journaling.progress + 
-            metrics.mentalHealth.meditation.progress + 
-            metrics.mentalHealth.epic.progress) / 3,
-        fullMark: 100,
-      },
-      {
-        subject: 'Health',
-        A: (metrics.health.strength.progress + 
-            metrics.health.sleep.bedOnTime.progress) / 2,
-        fullMark: 100,
-      },
-      {
-        subject: 'Productivity',
-        A: (metrics.productivity.language.progress + 
-            metrics.productivity.math.progress + 
-            metrics.productivity.code.progress + 
-            metrics.productivity.lessons.progress) / 4,
-        fullMark: 100,
-      },
-    ];
-  }, [getAllMetrics]);
+    const now = new Date();
+    const projections = {};
+    
+    // Helper to calculate days between two dates
+    const daysBetween = (date1, date2) => {
+      return Math.round(Math.abs((date1 - date2) / (24 * 60 * 60 * 1000)));
+    };
+    
+    // Helper to parse date from string
+    const parseDate = (dateStr) => {
+      if (!dateStr || dateStr === 'rolling') return null;
+      return new Date(dateStr);
+    };
+    
+    // Process each category of goals
+    Object.entries(goals).forEach(([category, categoryGoals]) => {
+      projections[category] = {};
+      
+      Object.entries(categoryGoals).forEach(([goalKey, goalData]) => {
+        const targetDate = parseDate(goalData.targetDate);
+        
+        // Skip goals without a target date
+        if (!targetDate) {
+          projections[category][goalKey] = {
+            isRolling: true,
+            targetValue: goalData.value,
+            description: goalData.description,
+            category: goalData.category
+          };
+          return;
+        }
+        
+        const daysUntilTarget = daysBetween(now, targetDate);
+        let currentValue = 0;
+        let rateOfProgress = 0;
+        let daysOfData = 30; // Default to a month
+        let projectedCompletion = null;
+        let isOnTrack = false;
+        
+        // Get current value based on goal type
+        switch(goalKey) {
+          case 'strengthChallengeTarget':
+            currentValue = safeGet(metrics, 'health.strength.total', 0);
+            break;
+          case 'newPhoneNumbersTarget':
+            currentValue = safeGet(metrics, 'social.newConnections.phoneNumbers.count', 0);
+            break;
+          case 'newHangoutsTarget':
+            currentValue = safeGet(metrics, 'social.newConnections.hangouts.count', 0);
+            break;
+          default:
+            // For rolling metrics, we use the progress value directly
+            if (goalData.targetDate === 'rolling') {
+              switch(category) {
+                case 'social':
+                  if (goalKey === 'familyContactDaysPerWeek') {
+                    currentValue = safeGet(metrics, 'social.family.daysCount', 0);
+                  } else if (goalKey === 'friendContactDaysPerWeek') {
+                    currentValue = safeGet(metrics, 'social.friends.daysCount', 0);
+                  } else if (goalKey === 'katSmilePercentage') {
+                    currentValue = safeGet(metrics, 'social.kat.smile.rate', 0);
+                  } else if (goalKey === 'katReviewsPerMonth') {
+                    currentValue = safeGet(metrics, 'social.kat.review.count', 0);
+                  }
+                  break;
+                case 'wellbeing':
+                  if (goalKey === 'journalingPercentage') {
+                    currentValue = safeGet(metrics, 'wellbeing.journaling.totalRate', 0);
+                  } else if (goalKey === 'meditationPercentage') {
+                    currentValue = safeGet(metrics, 'wellbeing.meditation.rate', 0);
+                  } else if (goalKey === 'epicActivitiesPerMonth') {
+                    currentValue = safeGet(metrics, 'wellbeing.epic.count', 0);
+                  }
+                  break;
+                case 'productivity':
+                  if (goalKey === 'languageDaysPercentage') {
+                    currentValue = safeGet(metrics, 'productivity.language.rate', 0);
+                  } else if (goalKey === 'mathDaysPercentage') {
+                    currentValue = safeGet(metrics, 'productivity.math.rate', 0);
+                  } else if (goalKey === 'codeDaysPercentage') {
+                    currentValue = safeGet(metrics, 'productivity.code.rate', 0);
+                  } else if (goalKey === 'lessonsPerMonth') {
+                    currentValue = safeGet(metrics, 'productivity.lessons.count', 0);
+                  }
+                  break;
+                case 'health':
+                  if (goalKey === 'sleepOnTimePercentage') {
+                    currentValue = safeGet(metrics, 'health.sleep.bedOnTime.rate', 0);
+                  }
+                  break;
+              }
+              
+              projections[category][goalKey] = {
+                isRolling: true,
+                targetValue: goalData.value,
+                currentValue: currentValue,
+                description: goalData.description,
+                category: goalData.category,
+                progress: (currentValue / goalData.value) * 100
+              };
+              return;
+            }
+        }
+        
+        // Calculate rate of progress - if we have at least 2 data points
+        const historicalData = getFilteredData();
+        if (historicalData.length >= 2) {
+          daysOfData = daysBetween(
+            new Date(historicalData[0].date), 
+            new Date(historicalData[historicalData.length - 1].date)
+          );
+          
+          // Use specific calculations for different goal types
+          if (daysOfData > 0) {
+            // Different rate calculations by goal type
+            switch(goalKey) {
+              case 'strengthChallengeTarget':
+                // For strength, use recent gains or average workout increases
+                const strengthEntries = historicalData.filter(e => e['400'] === 'Yes' || e.strength === 'Yes');
+                if (strengthEntries.length >= 2) {
+                  const firstStrength = strengthEntries[0];
+                  const lastStrength = strengthEntries[strengthEntries.length - 1];
+                  const firstTotal = 
+                    (parseInt(firstStrength.pushups || 0) || 0) + 
+                    (parseInt(firstStrength.rows || 0) || 0) + 
+                    (parseInt(firstStrength.situps || 0) || 0) + 
+                    (parseInt(firstStrength.squats || 0) || 0);
+                  
+                  const lastTotal = 
+                    (parseInt(lastStrength.pushups || 0) || 0) + 
+                    (parseInt(lastStrength.rows || 0) || 0) + 
+                    (parseInt(lastStrength.situps || 0) || 0) + 
+                    (parseInt(lastStrength.squats || 0) || 0);
+                  
+                  const strengthDays = daysBetween(
+                    new Date(firstStrength.date), 
+                    new Date(lastStrength.date)
+                  );
+                  
+                  if (strengthDays > 0) {
+                    rateOfProgress = (lastTotal - firstTotal) / strengthDays;
+                  }
+                }
+                break;
+                
+              case 'newPhoneNumbersTarget':
+              case 'newHangoutsTarget':
+                // For counting metrics, use count divided by days
+                rateOfProgress = currentValue / daysOfData;
+                break;
+                
+              default:
+                // Default rate of progress
+                rateOfProgress = 0;
+            }
+          }
+        }
+        
+        // Calculate projected completion date for non-rolling goals
+        if (rateOfProgress > 0) {
+          const remainingProgress = goalData.value - currentValue;
+          const daysToComplete = Math.ceil(remainingProgress / rateOfProgress);
+          projectedCompletion = new Date(now.getTime() + (daysToComplete * 24 * 60 * 60 * 1000));
+          
+          // Check if on track
+          isOnTrack = projectedCompletion <= targetDate;
+        } else {
+          // If no progress rate, project using available time and remaining work
+          const targetValue = goalData.value;
+          const neededRate = (targetValue - currentValue) / daysUntilTarget;
+          // Consider on track if needed rate is very low or we've already met the goal
+          isOnTrack = neededRate <= 0.1 || currentValue >= targetValue;
+        }
+        
+        projections[category][goalKey] = {
+          currentValue: currentValue,
+          targetValue: goalData.value,
+          targetDate: targetDate,
+          daysUntilTarget: daysUntilTarget,
+          rateOfProgress: rateOfProgress,
+          projectedCompletion: projectedCompletion,
+          isOnTrack: isOnTrack,
+          description: goalData.description,
+          category: goalData.category,
+          progress: (currentValue / goalData.value) * 100
+        };
+      });
+    });
+    
+    return projections;
+  }, [getAllMetrics, getFilteredData, goals]);
+
+  // New function for goal-centric data organization
+  const organizeGoalsByCategory = useCallback(() => {
+    const projections = calculateProjections();
+    const organizedGoals = {};
+    
+    // First pass - collect goals by their category
+    Object.entries(projections).forEach(([mainType, typeGoals]) => {
+      Object.entries(typeGoals).forEach(([goalKey, goalData]) => {
+        const category = goalData.category;
+        
+        if (!organizedGoals[category]) {
+          organizedGoals[category] = [];
+        }
+        
+        organizedGoals[category].push({
+          id: goalKey,
+          mainType: mainType,
+          ...goalData
+        });
+      });
+    });
+    
+    return organizedGoals;
+  }, [calculateProjections]);
+
 
   const renderProgressBar = (label, value, target = 100) => {
-    const progress = Math.min(100, (value / target) * 100);
+    // Add null checks
+    const safeValue = (value === undefined || value === null || isNaN(value)) ? 0 : value;
+    const safeTarget = (target === undefined || target === null || isNaN(target)) ? 100 : target;
+    const progress = Math.min(100, (safeValue / safeTarget) * 100);
     
     return (
       <div className="mb-4">
         <div className="flex justify-between mb-1">
           <span className="text-sm font-medium">{label}</span>
-          <span className="text-sm font-medium">{Math.round(value)}%</span>
+          <span className="text-sm font-medium">{Math.round(safeValue)}%</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2.5">
           <div 
@@ -620,73 +1177,24 @@ const LifeTrackerDashboard = () => {
     );
   };
 
-  const renderDateRangeSelector = () => {
+  const renderDashboardHeader = () => {
+    return null;
+  };
+  
+  const renderDashboardFooter = () => {
     return (
-      <div className="mb-6 flex flex-wrap justify-between items-center bg-white rounded-lg p-4 shadow">
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Time Period</h3>
-          <div className="flex space-x-2">
-            <button 
-              onClick={() => setDateRange('7days')} 
-              className={`px-3 py-1 rounded ${dateRange === '7days' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-            >
-              7 Days
-            </button>
-            <button 
-              onClick={() => setDateRange('30days')} 
-              className={`px-3 py-1 rounded ${dateRange === '30days' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-            >
-              30 Days
-            </button>
-            <button 
-              onClick={() => setDateRange('90days')} 
-              className={`px-3 py-1 rounded ${dateRange === '90days' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-            >
-              90 Days
-            </button>
-            <button 
-              onClick={() => setDateRange('365days')} 
-              className={`px-3 py-1 rounded ${dateRange === '365days' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-            >
-              1 Year
-            </button>
-            <button 
-              onClick={() => setDateRange('all')} 
-              className={`px-3 py-1 rounded ${dateRange === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-            >
-              All Time
-            </button>
+      <div className="mt-6 bg-white rounded-lg p-4 shadow border border-gray-200">
+        <div className="flex justify-between items-center">
+          <div>
+            {lastUpdated && (
+              <div className="text-xs text-gray-500">
+                Last updated: {lastUpdated.toLocaleString()}
+              </div>
+            )}
           </div>
-        </div>
-        
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Time Grouping</h3>
-          <div className="flex space-x-2">
-            <button 
-              onClick={() => setTimeGrouping('day')} 
-              className={`px-3 py-1 rounded ${timeGrouping === 'day' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-            >
-              Daily
-            </button>
-            <button 
-              onClick={() => setTimeGrouping('week')} 
-              className={`px-3 py-1 rounded ${timeGrouping === 'week' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-            >
-              Weekly
-            </button>
-            <button 
-              onClick={() => setTimeGrouping('month')} 
-              className={`px-3 py-1 rounded ${timeGrouping === 'month' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-            >
-              Monthly
-            </button>
-          </div>
-        </div>
-        
-        <div>
           <button
             onClick={() => setShowGoalSettings(!showGoalSettings)}
-            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+            className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
           >
             {showGoalSettings ? 'Hide Goal Settings' : 'Customize Goals'}
           </button>
@@ -695,308 +1203,108 @@ const LifeTrackerDashboard = () => {
     );
   };
 
+  // Helper function to update a goal value
+  const updateGoalValue = (category, goalKey, newValue) => {
+    setGoals(prevGoals => {
+      const updatedGoals = { ...prevGoals };
+      updatedGoals[category][goalKey].value = newValue;
+      return updatedGoals;
+    });
+  };
+  
+  // Helper to update goal target date
+  const updateGoalDate = (category, goalKey, newDate) => {
+    setGoals(prevGoals => {
+      const updatedGoals = { ...prevGoals };
+      updatedGoals[category][goalKey].targetDate = newDate;
+      return updatedGoals;
+    });
+  };
+
+  // Render goal settings
   const renderGoalSettings = () => {
     if (!showGoalSettings) return null;
+
+    // Organize goals by their actual categories
+    const categorizedGoals = {};
+    
+    // Process each category type
+    Object.entries(goals).forEach(([mainType, typeGoals]) => {
+      Object.entries(typeGoals).forEach(([goalKey, goalData]) => {
+        const category = goalData.category;
+        
+        if (!categorizedGoals[category]) {
+          categorizedGoals[category] = [];
+        }
+        
+        categorizedGoals[category].push({
+          id: goalKey,
+          mainType,
+          ...goalData
+        });
+      });
+    });
     
     return (
-      <div className="mb-6 bg-white rounded-lg p-4 shadow">
-        <h3 className="text-xl font-semibold mb-4">Customize Your Goals</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Social Goals */}
-          <div>
-            <h4 className="font-medium mb-3">Social Goals</h4>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm mb-1">Family Contact (days/week)</label>
-                <input 
-                  type="number" 
-                  value={goals.social.familyContactDaysPerWeek} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    social: {
-                      ...goals.social,
-                      familyContactDaysPerWeek: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  max="7"
-                  step="0.5"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm mb-1">Friend Contact (days/week)</label>
-                <input 
-                  type="number" 
-                  value={goals.social.friendContactDaysPerWeek} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    social: {
-                      ...goals.social,
-                      friendContactDaysPerWeek: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  max="7"
-                  step="0.5"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm mb-1">Make Kat Smile (% of days)</label>
-                <input 
-                  type="number" 
-                  value={goals.social.katSmilePercentage} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    social: {
-                      ...goals.social,
-                      katSmilePercentage: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  max="100"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm mb-1">Kat Reviews (per month)</label>
-                <input 
-                  type="number" 
-                  value={goals.social.katReviewsPerMonth} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    social: {
-                      ...goals.social,
-                      katReviewsPerMonth: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  step="0.5"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm mb-1">New Phone Numbers Target</label>
-                <input 
-                  type="number" 
-                  value={goals.social.newPhoneNumbersTarget} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    social: {
-                      ...goals.social,
-                      newPhoneNumbersTarget: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm mb-1">New Hangouts Target</label>
-                <input 
-                  type="number" 
-                  value={goals.social.newHangoutsTarget} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    social: {
-                      ...goals.social,
-                      newHangoutsTarget: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Mental Health Goals */}
-          <div>
-            <h4 className="font-medium mb-3">Mental Health Goals</h4>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm mb-1">Journaling (% target)</label>
-                <input 
-                  type="number" 
-                  value={goals.mentalHealth.journalingPercentage} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    mentalHealth: {
-                      ...goals.mentalHealth,
-                      journalingPercentage: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  max="100"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm mb-1">Meditation (% target)</label>
-                <input 
-                  type="number" 
-                  value={goals.mentalHealth.meditationPercentage} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    mentalHealth: {
-                      ...goals.mentalHealth,
-                      meditationPercentage: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  max="100"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm mb-1">Epic Activities (per month)</label>
-                <input 
-                  type="number" 
-                  value={goals.mentalHealth.epicActivitiesPerMonth} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    mentalHealth: {
-                      ...goals.mentalHealth,
-                      epicActivitiesPerMonth: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  step="0.5"
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Health Goals */}
-          <div>
-            <h4 className="font-medium mb-3">Health Goals</h4>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm mb-1">Strength Challenge Target</label>
-                <input 
-                  type="number" 
-                  value={goals.health.strengthChallengeTarget} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    health: {
-                      ...goals.health,
-                      strengthChallengeTarget: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  step="10"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm mb-1">Sleep On Time (% target)</label>
-                <input 
-                  type="number" 
-                  value={goals.health.sleepOnTimePercentage} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    health: {
-                      ...goals.health,
-                      sleepOnTimePercentage: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  max="100"
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Productivity Goals */}
-          <div>
-            <h4 className="font-medium mb-3">Productivity Goals</h4>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm mb-1">Language (% of days)</label>
-                <input 
-                  type="number" 
-                  value={goals.productivity.languageDaysPercentage} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    productivity: {
-                      ...goals.productivity,
-                      languageDaysPercentage: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  max="100"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm mb-1">Math (% of days)</label>
-                <input 
-                  type="number" 
-                  value={goals.productivity.mathDaysPercentage} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    productivity: {
-                      ...goals.productivity,
-                      mathDaysPercentage: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  max="100"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm mb-1">Coding (% of days)</label>
-                <input 
-                  type="number" 
-                  value={goals.productivity.codeDaysPercentage} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    productivity: {
-                      ...goals.productivity,
-                      codeDaysPercentage: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  max="100"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm mb-1">Lessons (per month)</label>
-                <input 
-                  type="number" 
-                  value={goals.productivity.lessonsPerMonth} 
-                  onChange={(e) => setGoals({
-                    ...goals,
-                    productivity: {
-                      ...goals.productivity,
-                      lessonsPerMonth: Number(e.target.value)
-                    }
-                  })}
-                  className="w-full px-3 py-2 border rounded"
-                  min="0"
-                  step="0.5"
-                />
-              </div>
-            </div>
-          </div>
+      <div className="mb-6 bg-white rounded-lg p-4 shadow border border-gray-200">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-semibold">Customize Your Goals</h3>
+          <button
+            onClick={() => setShowGoalSettings(false)}
+            className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm"
+          >
+            Close
+          </button>
         </div>
+        
+        {/* Display goals by their category */}
+        {Object.entries(categorizedGoals).map(([category, categoryGoals]) => (
+          <div key={category} className="mb-8">
+            <h4 className="font-medium text-lg mb-4 pb-2 border-b">{category}</h4>
+            
+            <div className="space-y-4">
+              {categoryGoals.map(goal => (
+                <div key={goal.id} className="p-3 border rounded bg-gray-50">
+                  <div className="font-medium mb-2">{goal.description}</div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm mb-1">Target Value</label>
+                      <input 
+                        type="number" 
+                        value={goal.value} 
+                        onChange={(e) => updateGoalValue(
+                          goal.mainType, 
+                          goal.id, 
+                          Number(e.target.value)
+                        )}
+                        className="w-full px-3 py-2 border rounded"
+                        min="0"
+                        step={goal.id.includes("Percentage") ? "5" : "1"}
+                      />
+                    </div>
+                    
+                    {goal.targetDate !== "rolling" && (
+                      <div>
+                        <label className="block text-sm mb-1">Target Date</label>
+                        <input 
+                          type="date" 
+                          value={goal.targetDate ? goal.targetDate.split('T')[0] : ""}
+                          onChange={(e) => updateGoalDate(
+                            goal.mainType, 
+                            goal.id, 
+                            e.target.value
+                          )}
+                          className="w-full px-3 py-2 border rounded"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
         
         {/* Auto-refresh settings */}
         <div className="mt-6 p-4 bg-gray-100 rounded">
@@ -1043,17 +1351,66 @@ const LifeTrackerDashboard = () => {
       );
     }
     
+    // Format the x-axis labels for better readability
+    const formatXAxis = (period) => {
+      // For YYYY-MM format, convert to MMM YY
+      const parts = period.split('-');
+      if (parts.length === 2) {
+        const year = parts[0];
+        const month = parseInt(parts[1], 10);
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${months[month - 1]} ${year.slice(2)}`;
+      }
+      return period;
+    };
+    
     return (
       <div className="bg-white p-4 rounded-lg shadow">
         <h3 className="text-lg font-semibold mb-4">{title}</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={historicalData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="period" />
-              <YAxis />
-              <Tooltip formatter={(value) => Math.round(value)} />
-              <Area type="monotone" dataKey="value" stroke={color} fill={color} fillOpacity={0.2} />
+            <AreaChart data={historicalData} margin={{ top: 5, right: 20, bottom: 30, left: 0 }}>
+              <defs>
+                <linearGradient id={`gradient-${metric}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={color} stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor={color} stopOpacity={0.2}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis 
+                dataKey="period" 
+                tickFormatter={formatXAxis} 
+                tick={{ fontSize: 12, fill: '#666' }}
+                angle={-45}
+                textAnchor="end"
+                height={50}
+              />
+              <YAxis 
+                domain={[0, 100]} 
+                tick={{ fontSize: 12, fill: '#666' }}
+                tickFormatter={(value) => `${value}%`}
+              />
+              <Tooltip 
+                formatter={(value) => [`${Math.round(value)}%`, title]} 
+                labelFormatter={formatXAxis}
+                contentStyle={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                  borderRadius: '5px',
+                  padding: '10px',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.15)'
+                }}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="value" 
+                stroke={color} 
+                fill={`url(#gradient-${metric})`} 
+                strokeWidth={2}
+                activeDot={{ r: 6, strokeWidth: 0, fill: color }}
+                isAnimationActive={true}
+                animationDuration={1000}
+                animationEasing="ease"
+              />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -1061,52 +1418,250 @@ const LifeTrackerDashboard = () => {
     );
   };
 
-  const renderOverview = () => {
-    const metrics = getAllMetrics();
-    const radarData = prepareRadarData();
+  // New component for rendering a goal progress bar
+  const GoalProgressBar = ({ goal }) => {
+    // Handle different types of goals
+    const isRolling = goal.isRolling;
+    const progress = goal.progress || 0;
+    
+    // Format date if available
+    const formatDate = (date) => {
+      if (!date) return 'N/A';
+      return new Date(date).toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+    };
     
     return (
-      <>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Overall Progress</h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
-                  <PolarGrid />
-                  <PolarAngleAxis dataKey="subject" />
-                  <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                  <Radar name="Progress" dataKey="A" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
-                  <Legend />
-                </RadarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Key Metrics</h3>
-            {renderProgressBar("Family Contact", metrics.social.family.progress)}
-            {renderProgressBar("Friend Contact", metrics.social.friends.progress)}
-            {renderProgressBar("Journaling", metrics.mentalHealth.journaling.progress)}
-            {renderProgressBar("Meditation", metrics.mentalHealth.meditation.progress)}
-            {renderProgressBar("Strength (400 Challenge)", metrics.health.strength.progress)}
-            {renderProgressBar("Coding", metrics.productivity.code.progress)}
+      <div className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm mb-3">
+        <div className="flex justify-between items-start mb-2">
+          <h4 className="text-md font-medium">{goal.description}</h4>
+          <div className="text-sm text-right">
+            {!isRolling && (
+              <div className={`font-bold ${goal.isOnTrack ? 'text-green-600' : 'text-red-500'}`}>
+                {goal.isOnTrack ? 'On Track' : 'Off Track'}
+              </div>
+            )}
           </div>
         </div>
         
-        <h3 className="text-xl font-semibold mb-4">Historical Trends</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {renderHistoricalChart('family_contact', 'Family Contact History', '#3b82f6')}
-          {renderHistoricalChart('friend_contact', 'Friend Contact History', '#10b981')}
-          {renderHistoricalChart('morning_journal', 'Morning Journal History', '#f59e0b')}
-          {renderHistoricalChart('meditation', 'Meditation History', '#8b5cf6')}
+        <div className="mb-2">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm">
+              Current: {goal.currentValue !== undefined ? Math.round(goal.currentValue) : '?'}
+            </span>
+            <span className="text-sm">
+              Target: {goal.targetValue}
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2.5">
+            <div 
+              className={`h-2.5 rounded-full ${
+                progress >= 100 ? 'bg-green-500' : 
+                progress >= 75 ? 'bg-blue-500' : 
+                progress >= 50 ? 'bg-yellow-500' : 
+                progress >= 25 ? 'bg-orange-500' : 
+                'bg-red-500'
+              }`} 
+              style={{ width: `${Math.min(100, progress)}%` }}
+            ></div>
+          </div>
         </div>
-      </>
+        
+        {!isRolling && (
+          <div className="text-xs text-gray-600 mt-1">
+            <div className="flex justify-between">
+              <span>Target date: {formatDate(goal.targetDate)}</span>
+              <span>{Math.round(goal.daysUntilTarget)} days left</span>
+            </div>
+            {goal.projectedCompletion && (
+              <div className="flex justify-between mt-1">
+                <span>Projected completion: </span>
+                <span className={goal.isOnTrack ? "text-green-600" : "text-red-500"}>
+                  {formatDate(goal.projectedCompletion)}
+                </span>
+              </div>
+            )}
+            {goal.rateOfProgress > 0 && (
+              <div className="mt-1">
+                Current rate: {goal.rateOfProgress.toFixed(2)} per day
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // New component for a category of goals
+  const GoalCategory = ({ title, goals }) => {
+    return (
+      <div className="mb-8">
+        <h3 className="text-xl font-semibold mb-4 border-b pb-2">{title}</h3>
+        <div>
+          {goals.map(goal => (
+            <GoalProgressBar key={goal.id} goal={goal} />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderOverview = () => {
+    const metrics = getAllMetrics();
+    
+    // Calculate average progress for each area
+    const calculateAreaProgress = (area) => {
+      let progress = 0;
+      let count = 0;
+      
+      if (area === 'social') {
+        progress += safeGet(metrics, 'social.family.progress', 0);
+        progress += safeGet(metrics, 'social.friends.progress', 0);
+        progress += safeGet(metrics, 'social.kat.smile.progress', 0);
+        progress += safeGet(metrics, 'social.kat.review.progress', 0);
+        progress += safeGet(metrics, 'social.newConnections.phoneNumbers.progress', 0);
+        progress += safeGet(metrics, 'social.newConnections.hangouts.progress', 0);
+        count = 6;
+      } else if (area === 'wellbeing') {
+        progress += safeGet(metrics, 'wellbeing.journaling.progress', 0);
+        progress += safeGet(metrics, 'wellbeing.meditation.progress', 0);
+        progress += safeGet(metrics, 'wellbeing.epic.progress', 0);
+        count = 3;
+      } else if (area === 'health') {
+        progress += safeGet(metrics, 'health.strength.progress', 0);
+        progress += safeGet(metrics, 'health.sleep.bedOnTime.progress', 0);
+        count = 2;
+      } else if (area === 'productivity') {
+        progress += safeGet(metrics, 'productivity.language.progress', 0);
+        progress += safeGet(metrics, 'productivity.math.progress', 0);
+        progress += safeGet(metrics, 'productivity.code.progress', 0);
+        progress += safeGet(metrics, 'productivity.lessons.progress', 0);
+        count = 4;
+      }
+      
+      return count > 0 ? progress / count : 0;
+    };
+    
+    const socialProgress = calculateAreaProgress('social');
+    const wellbeingProgress = calculateAreaProgress('wellbeing');
+    const healthProgress = calculateAreaProgress('health');
+    const productivityProgress = calculateAreaProgress('productivity');
+    
+    return (
+      <div className="p-4">
+        <h2 className="text-2xl font-bold mb-6">Life Balance Dashboard</h2>
+        
+        {/* Progress bars for each life area */}
+        <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
+          <h3 className="text-lg font-semibold mb-4">Life Areas Progress</h3>
+          
+          <div className="space-y-5">
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="font-medium">Social</span>
+                <span>{Math.round(socialProgress)}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className="h-3 rounded-full" 
+                  style={{ 
+                    width: `${Math.min(100, socialProgress)}%`,
+                    backgroundColor: '#3B82F6' // blue-500
+                  }}
+                ></div>
+              </div>
+            </div>
+            
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="font-medium">Wellbeing</span>
+                <span>{Math.round(wellbeingProgress)}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className="h-3 rounded-full" 
+                  style={{ 
+                    width: `${Math.min(100, wellbeingProgress)}%`,
+                    backgroundColor: '#8B5CF6' // purple-500
+                  }}
+                ></div>
+              </div>
+            </div>
+            
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="font-medium">Health</span>
+                <span>{Math.round(healthProgress)}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className="h-3 rounded-full" 
+                  style={{ 
+                    width: `${Math.min(100, healthProgress)}%`,
+                    backgroundColor: '#10B981' // emerald-500
+                  }}
+                ></div>
+              </div>
+            </div>
+            
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="font-medium">Productivity</span>
+                <span>{Math.round(productivityProgress)}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className="h-3 rounded-full" 
+                  style={{ 
+                    width: `${Math.min(100, productivityProgress)}%`,
+                    backgroundColor: '#F59E0B' // amber-500
+                  }}
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Summary metrics */}
+        <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+          <h3 className="text-lg font-semibold mb-4">Overall Summary</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <div className="text-sm text-gray-600">Goals On Track</div>
+              <div className="text-2xl font-bold text-green-600">
+                {Math.round(
+                  (socialProgress >= 50 ? 1 : 0) + 
+                  (wellbeingProgress >= 50 ? 1 : 0) + 
+                  (healthProgress >= 50 ? 1 : 0) + 
+                  (productivityProgress >= 50 ? 1 : 0)
+                )}
+                <span className="text-sm text-gray-500">/4</span>
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-gray-600">Overall Balance</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {Math.round((socialProgress + wellbeingProgress + healthProgress + productivityProgress) / 4)}%
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   };
 
   const renderSocialTab = () => {
     const metrics = getAllMetrics().social;
+    const organizedGoals = organizeGoalsByCategory();
+    const socialGoals = Object.entries(organizedGoals)
+      .filter(([category]) => category === "Maintain connections" || category === "Kat" || category === "Make friends")
+      .reduce((acc, [category, goals]) => {
+        acc[category] = goals;
+        return acc;
+      }, {});
     
     return (
       <>
@@ -1122,22 +1677,27 @@ const LifeTrackerDashboard = () => {
           
           <div className="bg-white p-4 rounded-lg shadow">
             <h3 className="text-lg font-semibold mb-4">Kat Metrics</h3>
-            {renderProgressBar("Make Kat Smile", metrics.kat.smile.rate, 100)}
-            <p className="text-sm text-gray-600 mb-4">Target: Most days ({goals.social.katSmilePercentage}%)</p>
+            {renderProgressBar("Did Something Nice for Kat", metrics.kat.smile.rate, 100)}
+            <p className="text-sm text-gray-600 mb-4">Target: Most days ({goals.social.katSmilePercentage.value}%)</p>
             
             {renderProgressBar("Kat Reviews", metrics.kat.review.count, metrics.kat.review.target)}
-            <p className="text-sm text-gray-600 mb-4">Target: {goals.social.katReviewsPerMonth} per month</p>
+            <p className="text-sm text-gray-600 mb-4">Target: {goals.social.katReviewsPerMonth.value} per month</p>
           </div>
         </div>
         
         <div className="bg-white p-4 rounded-lg shadow mb-6">
           <h3 className="text-lg font-semibold mb-4">New Connections</h3>
-          {renderProgressBar("New Phone Numbers", metrics.newConnections.phoneNumbers.count, goals.social.newPhoneNumbersTarget)}
-          <p className="text-sm text-gray-600 mb-4">Target: {goals.social.newPhoneNumbersTarget} by May</p>
+          {renderProgressBar("New Phone Numbers", metrics.newConnections.phoneNumbers.count, goals.social.newPhoneNumbersTarget.value)}
+          <p className="text-sm text-gray-600 mb-4">Target: {goals.social.newPhoneNumbersTarget.value} by May</p>
           
-          {renderProgressBar("Hangouts with New People", metrics.newConnections.hangouts.count, goals.social.newHangoutsTarget)}
-          <p className="text-sm text-gray-600 mb-4">Target: {goals.social.newHangoutsTarget} by May</p>
+          {renderProgressBar("Hangouts with New People", metrics.newConnections.hangouts.count, goals.social.newHangoutsTarget.value)}
+          <p className="text-sm text-gray-600 mb-4">Target: {goals.social.newHangoutsTarget.value} by May</p>
         </div>
+        
+        {/* Display detailed goals for Social */}
+        {Object.entries(socialGoals).map(([category, goals]) => (
+          <GoalCategory key={category} title={category} goals={goals} />
+        ))}
         
         <h3 className="text-xl font-semibold mb-4">Social Trends</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1148,46 +1708,17 @@ const LifeTrackerDashboard = () => {
     );
   };
 
-  const renderMentalHealthTab = () => {
-    const metrics = getAllMetrics().mentalHealth;
-    
-    return (
-      <>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Journaling</h3>
-            {renderProgressBar("Morning Journal", metrics.journaling.morningRate, 100)}
-            {renderProgressBar("Evening Journal", metrics.journaling.eveningRate, 100)}
-            {renderProgressBar("Both Morning & Evening", metrics.journaling.bothRate, 100)}
-            <p className="text-sm text-gray-600 mt-2">Target: >{goals.mentalHealth.journalingPercentage}% monthly rolling average</p>
-          </div>
-          
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Meditation/Prayer</h3>
-            {renderProgressBar("Days with Meditation", metrics.meditation.rate, 100)}
-            <p className="text-sm text-gray-600 mt-2">Target: >{goals.mentalHealth.meditationPercentage}% of days monthly rolling average</p>
-          </div>
-        </div>
-        
-        <div className="bg-white p-4 rounded-lg shadow mb-6">
-          <h3 className="text-lg font-semibold mb-4">Epic Activities</h3>
-          {renderProgressBar("Epic Activities", metrics.epic.count, metrics.epic.target)}
-          <p className="text-sm text-gray-600 mt-2">Target: At least {goals.mentalHealth.epicActivitiesPerMonth} per month</p>
-        </div>
-        
-        <h3 className="text-xl font-semibold mb-4">Mental Health Trends</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {renderHistoricalChart('morning_journal', 'Morning Journal History', '#f59e0b')}
-          {renderHistoricalChart('evening_journal', 'Evening Journal History', '#ef4444')}
-          {renderHistoricalChart('meditation', 'Meditation History', '#8b5cf6')}
-          {renderHistoricalChart('epic_activity', 'Epic Activities History', '#ec4899')}
-        </div>
-      </>
-    );
-  };
 
   const renderHealthTab = () => {
     const metrics = getAllMetrics().health;
+    const organizedGoals = organizeGoalsByCategory();
+    const healthGoals = Object.entries(organizedGoals)
+      .filter(([category]) => category === "Strength" || category === "Climbing" || category === "Running" || 
+                            category === "Direct metrics" || category === "Sleep")
+      .reduce((acc, [category, goals]) => {
+        acc[category] = goals;
+        return acc;
+      }, {});
     
     return (
       <>
@@ -1196,7 +1727,7 @@ const LifeTrackerDashboard = () => {
             <h3 className="text-lg font-semibold mb-4">Strength (400 Challenge)</h3>
             <div className="mb-6">
               <div className="flex justify-between mb-1">
-                <span className="text-lg font-bold">Total: {metrics.strength.total}/{goals.health.strengthChallengeTarget}</span>
+                <span className="text-lg font-bold">Total: {metrics.strength.total}/{goals.health.strengthChallengeTarget.value}</span>
                 <span className="text-lg font-bold">{Math.round(metrics.strength.progress)}%</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-4">
@@ -1230,16 +1761,21 @@ const LifeTrackerDashboard = () => {
                 </div>
               </div>
             </div>
-            <p className="text-sm text-gray-600 mt-4">Target: Complete {goals.health.strengthChallengeTarget} Challenge by May 1st</p>
+            <p className="text-sm text-gray-600 mt-4">Target: Complete {goals.health.strengthChallengeTarget.value} Challenge by May 1st</p>
           </div>
           
           <div className="bg-white p-4 rounded-lg shadow">
             <h3 className="text-lg font-semibold mb-4">Sleep</h3>
             {renderProgressBar("Bed On Time", metrics.sleep.bedOnTime.rate, 100)}
             {renderProgressBar("Up On Time", metrics.sleep.upOnTime.rate, 100)}
-            <p className="text-sm text-gray-600 mt-2">Target: {goals.health.sleepOnTimePercentage}% within one hour of bedtime weekly average</p>
+            <p className="text-sm text-gray-600 mt-2">Target: {goals.health.sleepOnTimePercentage.value}% within one hour of bedtime weekly average</p>
           </div>
         </div>
+        
+        {/* Display detailed goals for Health */}
+        {Object.entries(healthGoals).map(([category, goals]) => (
+          <GoalCategory key={category} title={category} goals={goals} />
+        ))}
         
         <h3 className="text-xl font-semibold mb-4">Health Trends</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1252,6 +1788,13 @@ const LifeTrackerDashboard = () => {
 
   const renderProductivityTab = () => {
     const metrics = getAllMetrics().productivity;
+    const organizedGoals = organizeGoalsByCategory();
+    const productivityGoals = Object.entries(organizedGoals)
+      .filter(([category]) => category === "Learning")
+      .reduce((acc, [category, goals]) => {
+        acc[category] = goals;
+        return acc;
+      }, {});
     
     return (
       <>
@@ -1261,15 +1804,20 @@ const LifeTrackerDashboard = () => {
             {renderProgressBar("Language", metrics.language.rate, 100)}
             {renderProgressBar("Math", metrics.math.rate, 100)}
             {renderProgressBar("Coding", metrics.code.rate, 100)}
-            <p className="text-sm text-gray-600 mt-2">Target: More than {goals.productivity.languageDaysPercentage}% of days monthly rolling average</p>
+            <p className="text-sm text-gray-600 mt-2">Target: More than {goals.productivity.languageDaysPercentage.value}% of days monthly rolling average</p>
           </div>
           
           <div className="bg-white p-4 rounded-lg shadow">
             <h3 className="text-lg font-semibold mb-4">Lesson Completion</h3>
             {renderProgressBar("Lessons Completed", metrics.lessons.count, metrics.lessons.target)}
-            <p className="text-sm text-gray-600 mt-2">Target: At least {goals.productivity.lessonsPerMonth} per month</p>
+            <p className="text-sm text-gray-600 mt-2">Target: At least {goals.productivity.lessonsPerMonth.value} per month</p>
           </div>
         </div>
+        
+        {/* Display detailed goals for Productivity */}
+        {Object.entries(productivityGoals).map(([category, goals]) => (
+          <GoalCategory key={category} title={category} goals={goals} />
+        ))}
         
         <h3 className="text-xl font-semibold mb-4">Productivity Trends</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1277,6 +1825,57 @@ const LifeTrackerDashboard = () => {
           {renderHistoricalChart('math', 'Math Study History', '#10b981')}
           {renderHistoricalChart('code', 'Coding History', '#f59e0b')}
           {renderHistoricalChart('lessons', 'Completed Lessons History', '#8b5cf6')}
+        </div>
+      </>
+    );
+  };
+
+  // New function to render the wellbeing tab
+  const renderWellbeingTab = () => {
+    const metrics = getAllMetrics().wellbeing;
+    const organizedGoals = organizeGoalsByCategory();
+    const wellbeingGoals = Object.entries(organizedGoals)
+      .filter(([category]) => category === "Journaling" || category === "Meditation/Prayer" || category === "Do epic shit")
+      .reduce((acc, [category, goals]) => {
+        acc[category] = goals;
+        return acc;
+      }, {});
+    
+    return (
+      <>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="bg-white p-4 rounded-lg shadow">
+            <h3 className="text-lg font-semibold mb-4">Journaling</h3>
+            {renderProgressBar("Morning Journal", metrics.journaling.morningRate, 100)}
+            {renderProgressBar("Evening Journal", metrics.journaling.eveningRate, 100)}
+            {renderProgressBar("Both Morning & Evening", metrics.journaling.bothRate, 100)}
+            <p className="text-sm text-gray-600 mt-2">Target: >{goals.wellbeing.journalingPercentage.value}% monthly rolling average</p>
+          </div>
+          
+          <div className="bg-white p-4 rounded-lg shadow">
+            <h3 className="text-lg font-semibold mb-4">Meditation/Prayer</h3>
+            {renderProgressBar("Days with Meditation", metrics.meditation.rate, 100)}
+            <p className="text-sm text-gray-600 mt-2">Target: >{goals.wellbeing.meditationPercentage.value}% of days monthly rolling average</p>
+          </div>
+        </div>
+        
+        <div className="bg-white p-4 rounded-lg shadow mb-6">
+          <h3 className="text-lg font-semibold mb-4">Epic Activities</h3>
+          {renderProgressBar("Epic Activities", metrics.epic.count, metrics.epic.target)}
+          <p className="text-sm text-gray-600 mt-2">Target: At least {goals.wellbeing.epicActivitiesPerMonth.value} per month</p>
+        </div>
+        
+        {/* Display detailed goals for Wellbeing */}
+        {Object.entries(wellbeingGoals).map(([category, goals]) => (
+          <GoalCategory key={category} title={category} goals={goals} />
+        ))}
+        
+        <h3 className="text-xl font-semibold mb-4">Wellbeing Trends</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {renderHistoricalChart('morning_journal', 'Morning Journal History', '#f59e0b')}
+          {renderHistoricalChart('evening_journal', 'Evening Journal History', '#ef4444')}
+          {renderHistoricalChart('meditation', 'Meditation History', '#8b5cf6')}
+          {renderHistoricalChart('epic_activity', 'Epic Activities History', '#ec4899')}
         </div>
       </>
     );
@@ -1335,94 +1934,102 @@ const LifeTrackerDashboard = () => {
 
     return (
       <>
-        {renderDateRangeSelector()}
+        {renderDashboardHeader()}
         {renderGoalSettings()}
         
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'social' && renderSocialTab()}
-        {activeTab === 'mentalHealth' && renderMentalHealthTab()}
+        {activeTab === 'wellbeing' && renderWellbeingTab()}
         {activeTab === 'health' && renderHealthTab()}
         {activeTab === 'productivity' && renderProductivityTab()}
+        
+        {renderDashboardFooter()}
       </>
     );
   };
 
   const renderHeader = () => {
     return (
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-        <h1 className="text-3xl font-bold mb-4 md:mb-0">Life Tracker Dashboard</h1>
-        
-        <div className="flex items-center">
-          {isAuthenticated && (
-            <>
-              <div className="text-sm text-gray-500 mr-4">
-                {lastUpdated ? `Last updated: ${lastUpdated.toLocaleTimeString()}` : 'Not yet updated'}
-              </div>
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-4 rounded-lg shadow-lg mb-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
+          <h1 className="text-2xl font-bold mb-4 md:mb-0">Life Goals Dashboard</h1>
+          
+          <div className="flex items-center">
+            {isAuthenticated && (
               <button 
                 onClick={fetchSheetData} 
-                className="mr-4 p-2 bg-gray-200 rounded-full hover:bg-gray-300"
+                className="mr-4 p-2 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-all"
                 title="Refresh Data"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
               </button>
-            </>
-          )}
-          
-          <button 
-            onClick={handleAuthClick} 
-            className={`px-4 py-2 ${isAuthenticated ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded`}
-          >
-            {isAuthenticated ? 'Disconnect' : 'Connect to Google Sheets'}
-          </button>
+            )}
+            
+            <button 
+              onClick={handleAuthClick} 
+              className={`px-4 py-2 rounded text-sm font-medium ${
+                isAuthenticated 
+                  ? 'bg-white bg-opacity-20 hover:bg-opacity-30' 
+                  : 'bg-white text-indigo-600 hover:bg-opacity-90'
+              }`}
+            >
+              {isAuthenticated ? 'Disconnect' : 'Connect to Google Sheets'}
+            </button>
+          </div>
         </div>
+        
+        {/* Optional description */}
+        {isAuthenticated && (
+          <div className="mt-2 text-sm text-white text-opacity-80">
+            Track your progress toward life goals with projections based on your current pace.
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Tab navigation component
+  const renderTabs = () => {
+    if (!isAuthenticated) return null;
+    
+    const tabs = [
+      { id: 'overview', label: 'Overview' },
+      { id: 'health', label: 'Health' },
+      { id: 'wellbeing', label: 'Wellbeing' },
+      { id: 'social', label: 'Social' },
+      { id: 'productivity', label: 'Productivity' }
+    ];
+    
+    return (
+      <div className="mb-6 border-b border-gray-200">
+        <nav className="-mb-px flex space-x-1" aria-label="Tabs">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-3 px-5 border-b-2 text-center text-sm font-medium ${
+                activeTab === tab.id
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+              aria-current={activeTab === tab.id ? 'page' : undefined}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 md:p-6">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="max-w-6xl mx-auto">
         {renderHeader()}
         
-        {isAuthenticated && (
-          <div className="mb-6">
-            <div className="flex overflow-x-auto space-x-2 pb-2">
-              <button 
-                onClick={() => setActiveTab('overview')} 
-                className={`px-4 py-2 rounded-lg ${activeTab === 'overview' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              >
-                Overview
-              </button>
-              <button 
-                onClick={() => setActiveTab('social')} 
-                className={`px-4 py-2 rounded-lg ${activeTab === 'social' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              >
-                Social
-              </button>
-              <button 
-                onClick={() => setActiveTab('mentalHealth')} 
-                className={`px-4 py-2 rounded-lg ${activeTab === 'mentalHealth' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              >
-                Mental Health
-              </button>
-              <button 
-                onClick={() => setActiveTab('health')} 
-                className={`px-4 py-2 rounded-lg ${activeTab === 'health' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              >
-                Health
-              </button>
-              <button 
-                onClick={() => setActiveTab('productivity')} 
-                className={`px-4 py-2 rounded-lg ${activeTab === 'productivity' ? 'bg-blue-600 text-white' : 'bg-white'}`}
-              >
-                Productivity
-              </button>
-            </div>
-          </div>
-        )}
-        
+        {isAuthenticated && renderTabs()}
         {renderContent()}
       </div>
     </div>
