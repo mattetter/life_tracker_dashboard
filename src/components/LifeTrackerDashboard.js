@@ -3715,33 +3715,52 @@ const LifeTrackerDashboard = () => {
   const renderOverview = () => {
     const metrics = getAllMetrics();
     
+    // Video game style health bar renderer
+    const renderHealthBar = (label, value, maxValue, color, bgColor, icon) => {
+      const percentage = Math.min(100, Math.round((value / maxValue) * 100));
+      
+      return (
+        <div className="bg-gray-900 p-5 rounded-lg shadow-lg border border-gray-700">
+          <div className="flex justify-between items-center mb-2">
+            <div className="flex items-center">
+              {icon && <span className="mr-2">{icon}</span>}
+              <h3 className="text-lg font-bold text-gray-100">{label}</h3>
+            </div>
+            <div className="text-lg font-bold text-gray-200">{value}/{maxValue}</div>
+          </div>
+          
+          <div className="h-5 w-full bg-gray-800 rounded-full overflow-hidden border border-gray-700 relative">
+            {/* Main health bar */}
+            <div 
+              className={`h-full ${color} transition-all duration-500 ease-out`} 
+              style={{ width: `${percentage}%` }}
+            ></div>
+            
+            {/* Segmented video game style overlay */}
+            <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
+              {[...Array(10)].map((_, i) => (
+                <div 
+                  key={i} 
+                  className="absolute top-0 bottom-0 border-l border-gray-900 opacity-50"
+                  style={{ left: `${(i+1) * 10}%` }}
+                ></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    };
+    
     return (
       <>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-          {/* Quick stats cards */}
-          <div className="bg-blue-900 p-4 rounded-lg shadow border border-blue-800">
-            <h3 className="text-lg font-semibold mb-2 text-blue-100">Social</h3>
-            <div className="text-3xl font-bold text-white mb-1">{Math.round(metrics.social.family.rate)}%</div>
-            <p className="text-blue-200 text-sm">Family contact this month</p>
-          </div>
+        <div className="space-y-4 mb-6">
+          <h2 className="text-2xl font-bold text-gray-100 mb-4">Status</h2>
           
-          <div className="bg-purple-900 p-4 rounded-lg shadow border border-purple-800">
-            <h3 className="text-lg font-semibold mb-2 text-purple-100">Wellbeing</h3>
-            <div className="text-3xl font-bold text-white mb-1">{Math.round(metrics.wellbeing.journaling.totalRate)}%</div>
-            <p className="text-purple-200 text-sm">Journaling completion</p>
-          </div>
-          
-          <div className="bg-green-900 p-4 rounded-lg shadow border border-green-800">
-            <h3 className="text-lg font-semibold mb-2 text-green-100">Health</h3>
-            <div className="text-3xl font-bold text-white mb-1">{metrics.health.strength.total}</div>
-            <p className="text-green-200 text-sm">Strength challenge progress</p>
-          </div>
-          
-          <div className="bg-amber-900 p-4 rounded-lg shadow border border-amber-800">
-            <h3 className="text-lg font-semibold mb-2 text-amber-100">Productivity</h3>
-            <div className="text-3xl font-bold text-white mb-1">{Math.round(metrics.productivity.code.rate)}%</div>
-            <p className="text-amber-200 text-sm">Coding practice days</p>
-          </div>
+          {/* Video game style health bars */}
+          {renderHealthBar("Social", Math.round(metrics.social.family.rate), 100, "bg-blue-600", "bg-blue-900", "👥")}
+          {renderHealthBar("Wellbeing", Math.round(metrics.wellbeing.journaling.totalRate), 100, "bg-purple-600", "bg-purple-900", "✨")}
+          {renderHealthBar("Strength", metrics.health.strength.total, goals.health.strengthChallengeTarget.value, "bg-green-600", "bg-green-900", "💪")}
+          {renderHealthBar("Productivity", Math.round(metrics.productivity.code.rate), 100, "bg-amber-600", "bg-amber-900", "⚡")}
         </div>
         
         {/* Projects Section */}
@@ -3899,39 +3918,7 @@ const LifeTrackerDashboard = () => {
         {renderDashboardHeader()}
         {renderGoalSettings()}
         
-        {/* Show recent Strava activity on all tabs if available */}
-        {isStravaConnected && stravaData?.activities?.length > 0 && activeTab !== 'strava' && (
-          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
-            <h3 className="text-lg font-medium text-gray-200 mb-3 flex justify-between items-center">
-              <span>Latest Strava Activity</span>
-              <button 
-                onClick={() => setActiveTab('strava')}
-                className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                View All
-              </button>
-            </h3>
-            {stravaData.activities.slice(0, 1).map((activity, index) => (
-              <div key={activity.id || index} className="bg-gray-700 rounded p-3">
-                <div className="flex justify-between">
-                  <div>
-                    <span className="font-bold text-gray-200">{activity.name}</span>
-                    <p className="text-sm text-gray-400">{new Date(activity.start_date).toLocaleDateString()}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-blue-400">
-                      <span className="font-bold">{Math.floor(activity.moving_time / 60)}</span>
-                      <span className="text-sm"> min</span>
-                    </div>
-                    <div className="text-sm text-gray-400">
-                      {(activity.distance / 1000).toFixed(2)} km
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Latest Strava Activity section removed */}
         
         {activeTab === 'overview' && renderOverview()}
         {/* {activeTab === 'social' && renderSocialTab()} */}
