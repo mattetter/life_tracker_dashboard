@@ -48,6 +48,7 @@ const LifeTrackerDashboard = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [dateRange, setDateRange] = useState('all'); // Using 'all' as default to show all data
   
   // Projects state
   const [projects, setProjects] = useState([]);
@@ -61,9 +62,6 @@ const LifeTrackerDashboard = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showSignUp, setShowSignUp] = useState(false);
-  
-  // Historical tracking state
-  const [dateRange] = useState('all'); // Using 'all' as default to show all data
   
   // Goals customization state
   const [showGoalSettings, setShowGoalSettings] = useState(false);
