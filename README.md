@@ -1,70 +1,142 @@
-# Getting Started with Create React App
+# Life Tracker Dashboard
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A personal dashboard for tracking various areas of your life: social, wellbeing, health, and productivity.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+- User authentication using Firebase
+- Daily tracking of activities and metrics
+- Goal setting and progress tracking
+- Visual dashboard with progress bars and charts
+- Historical data viewing by time period
+- Integration with Strava for automatic fitness activity tracking
+- Import and sync fitness data to your health metrics
 
-### `npm start`
+## Tech Stack
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+- React
+- Firebase (Authentication, Firestore, Hosting)
+- Tailwind CSS
+- Recharts for data visualization
+- Strava API integration
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Setup
 
-### `npm test`
+1. Clone this repository
+2. Install dependencies:
+   ```
+   npm install
+   ```
+3. Create a Firebase project at https://console.firebase.google.com/
+4. Add a web app to your Firebase project
+5. Enable Email/Password authentication
+6. Enable Firestore database
+7. Update the Firebase configuration in `src/components/LifeTrackerDashboard.js`
+8. For Strava integration: 
+   - Create an application in the Strava API portal (https://developers.strava.com/)
+   - Go to "My API Application" in your Strava account settings
+   - Create a new application with the following details:
+     - Application Name: Life Tracker Dashboard (or your preferred name)
+     - Category: Fitness
+     - Website: Your app's URL or localhost for development
+     - Authorization Callback Domain: Your app's domain or localhost (e.g., localhost:3000 for development)
+   - After creating the application, you'll receive a Client ID and Client Secret
+   - Add these credentials to your `.env` file:
+     ```
+     REACT_APP_STRAVA_CLIENT_ID=your_client_id_here
+     REACT_APP_STRAVA_CLIENT_SECRET=your_client_secret_here
+     REACT_APP_STRAVA_REDIRECT_URI=http://localhost:3000
+     ```
+   - For production, update the redirect URI to your deployed app URL
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Firebase Configuration
 
-### `npm run build`
+Replace the placeholder Firebase config with your own values:
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+```javascript
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID",
+  measurementId: "YOUR_MEASUREMENT_ID"
+};
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Running Locally
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```
+npm start
+```
 
-### `npm run eject`
+## Deploying to Firebase
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+1. Install Firebase CLI:
+   ```
+   npm install -g firebase-tools
+   ```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+2. Login to Firebase:
+   ```
+   firebase login
+   ```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+3. Initialize Firebase in your project:
+   ```
+   firebase init
+   ```
+   
+   Select Hosting and Firestore when prompted.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+4. Build the project:
+   ```
+   npm run build
+   ```
 
-## Learn More
+5. Deploy to Firebase:
+   ```
+   npm run deploy:firebase
+   ```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Creating Your Account
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+1. Sign up using the registration form with your email and a password
+2. Start tracking your daily activities
+3. Customize your goals in the dashboard
 
-### Code Splitting
+## Data Structure
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+The app stores data in Firestore with the following structure:
 
-### Analyzing the Bundle Size
+- `/users/{userId}/logs` - Daily log entries
+- `/users/{userId}/settings/goals` - User goals and targets
+- `/users/{userId}/journal` - Journal entries
+- `/users/{userId}/healthMetrics` - Health measurements and activities
+- `/users/{userId}/projects` - Projects and goals
+- `/users/{userId}/strava` - Strava sync data and imported activities
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## Strava Integration
 
-### Making a Progressive Web App
+The dashboard provides integration with Strava to automatically sync:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+- Running, cycling, and other activities
+- Distance, pace, and elevation data
+- Heart rate data (when available from your device)
+- Activity types and summaries
+- Performance metrics
+- Detailed activity stats
 
-### Advanced Configuration
+To use this feature:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+1. Set up Strava API credentials as described in the Setup section
+2. Connect your Strava account through the Strava tab
+3. Allow the requested permissions for activity data access
+4. Sync and import the data into your health metrics
 
-### Deployment
+Note: All authentication is handled securely through Strava's OAuth flow. Your credentials are never stored directly in the application.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+## License
 
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+MIT

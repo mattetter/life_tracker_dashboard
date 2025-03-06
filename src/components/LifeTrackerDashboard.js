@@ -510,7 +510,7 @@ const LifeTrackerDashboard = () => {
     } finally {
       setIsLoadingHealthMetrics(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, auth.currentUser]);
   
   // Add health metric
   const addHealthMetric = async (metricData) => {
@@ -521,16 +521,35 @@ const LifeTrackerDashboard = () => {
     
     try {
       setIsLoading(true);
+      console.log("Adding health metric with data:", metricData);
+      
+      // Handle cardio exercise data specially
+      let enhancedMetricData = {...metricData};
+      
+      // If this is an exercise entry, add needed fields
+      if (metricData.activity_type && 
+          ['running', 'cycling', 'swimming', 'climbing', 'walking', 'hiking'].includes(metricData.activity_type)) {
+        console.log("Adding exercise data");
+        // Mark it as a cardio exercise
+        enhancedMetricData.cardio = 'Yes';
+        
+        // Make sure it has required fields with defaults
+        if (!enhancedMetricData.duration) enhancedMetricData.duration = 30;
+        if (!enhancedMetricData.heart_rate) enhancedMetricData.heart_rate = 130;
+      }
       
       // Add timestamp and standardize data format
       const newMetric = {
-        ...metricData,
+        ...enhancedMetricData,
         date: Timestamp.now(),
         userId: auth.currentUser.uid,
       };
       
+      console.log("Saving health metric to Firestore:", newMetric);
+      
       // Add the document to the healthMetrics collection
-      await addDoc(collection(db, 'users', auth.currentUser.uid, 'healthMetrics'), newMetric);
+      const docRef = await addDoc(collection(db, 'users', auth.currentUser.uid, 'healthMetrics'), newMetric);
+      console.log("Health metric saved with ID:", docRef.id);
       
       // Refresh health metrics
       fetchHealthMetrics();
@@ -554,7 +573,7 @@ const LifeTrackerDashboard = () => {
     if (isAuthenticated && auth.currentUser && activeTab === 'health') {
       fetchHealthMetrics();
     }
-  }, [isAuthenticated, activeTab]);
+  }, [isAuthenticated, auth.currentUser, activeTab, fetchHealthMetrics]);
   
   // Function to add a new project
   const addProject = async (projectData) => {
@@ -1678,7 +1697,9 @@ const LifeTrackerDashboard = () => {
 
   // Filter data based on selected date range
   const getFilteredData = useCallback(() => {
-    if (data.length === 0) return [];
+    if (!data || data.length === 0) return [];
+    
+    console.log("Total data entries before filtering:", data.length);
     
     const now = new Date();
     let startDate;
@@ -1698,10 +1719,36 @@ const LifeTrackerDashboard = () => {
         break;
       case 'all':
       default:
+        console.log("Showing all data entries:", data.length);
         return data;
     }
     
-    return data.filter(entry => new Date(entry.date) >= startDate);
+    // Improved date handling
+    const filteredResults = data.filter(entry => {
+      // Check if entry has a date field
+      if (!entry || !entry.date) {
+        return false;
+      }
+      
+      // Ensure date is a proper Date object for comparison
+      let entryDate;
+      try {
+        // Handle different date formats
+        entryDate = entry.date instanceof Date 
+          ? entry.date 
+          : (typeof entry.date === 'object' && entry.date.toDate) 
+            ? entry.date.toDate() 
+            : new Date(entry.date);
+      } catch (error) {
+        console.error("Error converting date:", error, entry.date);
+        return false;
+      }
+      
+      return entryDate >= startDate;
+    });
+    
+    console.log(`Data entries after filtering by date (${dateRange}):`, filteredResults.length);
+    return filteredResults;
   }, [data, dateRange]);
 
   // Group data by time period for historical charts
@@ -2059,57 +2106,289 @@ const LifeTrackerDashboard = () => {
     };
   }, [getFilteredData]);
   
-  // Calculate cardio metrics based on filtered data
+  // Calculate cardio metrics based on health metrics data
   const calculateCardioMetrics = useCallback(() => {
     try {
-      const filteredData = getFilteredData();
-      if (filteredData.length === 0) return { 
+      // Default return value for safety
+      const defaultMetrics = { 
         rate: 0, 
         count: 0, 
         totalMiles: 0, 
         averageMiles: 0,
         weeklyLoad: 0,
-        recentLoads: []
+        recentLoads: [],
+        exerciseLoads: []
       };
       
-      const cardioEntries = filteredData.filter(entry => entry.cardio === 'Yes');
-      const rate = (cardioEntries.length / filteredData.length) * 100;
+      // First check if we have health metrics data
+      if (!healthMetrics || healthMetrics.length === 0) {
+        console.log("No health metrics available for cardio calculation");
+        // Fall back to using log entries if available
+        if (!getFilteredData) {
+          console.warn("getFilteredData function is not available");
+          return defaultMetrics;
+        }
+        
+        const filteredData = getFilteredData();
+        if (!filteredData || filteredData.length === 0) {
+          return defaultMetrics;
+        }
+        
+        // Filter cardio entries from log data as fallback
+        const cardioEntries = filteredData.filter(entry => {
+          return entry && 
+            (entry.cardio === 'Yes' || 
+             entry.cardio === 'yes' ||
+             entry.cardio === true ||
+             entry.cardio === 1 ||
+             entry.strength === 'Yes' ||
+             entry.strength === 'yes' ||
+             entry.strength === true ||
+             entry.activity_type === 'running' ||
+             entry.activity_type === 'cycling' ||
+             entry.activity_type === 'swimming' ||
+             entry.activity_type === 'climbing');
+        });
+        
+        console.log("Cardio entries found in logs:", cardioEntries.length);
+        // Process log entries (same as before)
+        if (!cardioEntries || cardioEntries.length === 0) {
+          return defaultMetrics;
+        }
+        
+        const rate = (cardioEntries.length / filteredData.length) * 100;
+        
+        // Calculate total miles from log entries
+        const totalMiles = cardioEntries.reduce((sum, entry) => {
+          if (!entry) return sum;
+          
+          // Handle multiple possible field names for miles
+          const miles = parseFloat(
+            entry.miles || 
+            entry.distance || 
+            entry.distanceInMiles || 
+            entry.run_distance || 
+            0
+          );
+          
+          return sum + (isNaN(miles) ? 0 : miles);
+        }, 0);
+        
+        // Continue with log-based exercise loads calculation
+        const exerciseLoads = cardioEntries.map(entry => {
+          if (!entry) return null;
+          
+          const duration = parseFloat(
+            entry.duration || 
+            entry.durationInMinutes || 
+            entry.exercise_duration || 
+            entry.workout_duration || 
+            0
+          );
+          
+          const heartRate = parseFloat(
+            entry.heart_rate || 
+            entry.heartRate || 
+            entry.bpm || 
+            entry.avg_heart_rate || 
+            entry.avgHeartRate || 
+            0
+          );
+          
+          const activity = 
+            entry.activity_type || 
+            entry.activityType || 
+            entry.exercise_type || 
+            entry.workout_type || 
+            'exercise';
+          
+          const defaultDuration = 30;
+          const defaultHeartRate = 130;
+          
+          return {
+            date: entry.date ? new Date(entry.date) : new Date(),
+            load: ((isNaN(duration) ? defaultDuration : duration) * 
+                  (isNaN(heartRate) ? defaultHeartRate : heartRate)) / 100,
+            activity: activity,
+            duration: isNaN(duration) ? defaultDuration : duration,
+            heartRate: isNaN(heartRate) ? defaultHeartRate : heartRate,
+            id: entry.id || `cardio-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            source: 'log'
+          };
+        }).filter(load => load !== null);
+        
+        // Calculate weekly load from logs
+        const now = new Date();
+        const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const weeklyLoads = exerciseLoads.filter(load => load && load.date >= oneWeekAgo);
+        const weeklyLoadSum = weeklyLoads.reduce((sum, entry) => sum + (entry ? entry.load : 0), 0);
+        
+        return {
+          rate: rate,
+          count: cardioEntries.length,
+          totalMiles: totalMiles,
+          averageMiles: cardioEntries.length > 0 ? totalMiles / cardioEntries.length : 0,
+          exerciseLoads: exerciseLoads,
+          weeklyLoad: weeklyLoadSum,
+          recentLoads: weeklyLoads,
+          source: 'logs'
+        };
+      }
       
-      // Calculate total miles
-      const totalMiles = cardioEntries.reduce((sum, entry) => {
-        const miles = parseFloat(entry.miles || 0);
-        return sum + (isNaN(miles) ? 0 : miles);
+      // If we have health metrics, use them instead
+      console.log("Using health metrics for cardio calculation, count:", healthMetrics.length);
+      
+      // Filter health metrics for cardio activities
+      const cardioMetrics = healthMetrics.filter(metric => {
+        return metric && (
+          // Include all metrics with activity type that indicates cardio
+          (metric.activityType && [
+            'running', 'cycling', 'swimming', 'walking', 'hiking', 
+            'climbing', 'Run', 'Ride', 'Swim', 'Walk', 'Hike'
+          ].includes(metric.activityType)) ||
+          // Or those explicitly marked as cardio
+          metric.cardio === 'Yes' ||
+          // Or those from Strava which would be cardio
+          (metric.source === 'strava' && metric.activityType)
+        );
+      });
+      
+      if (!cardioMetrics || cardioMetrics.length === 0) {
+        console.log("No cardio metrics found in health data, falling back to logs");
+        // Fall back to logs calculation (recursive call without health metrics)
+        const tempHealthMetrics = healthMetrics;
+        healthMetrics = []; // Clear temporarily to force fallback
+        const result = calculateCardioMetrics();
+        healthMetrics = tempHealthMetrics; // Restore
+        return result;
+      }
+      
+      console.log("Cardio metrics found:", cardioMetrics.length);
+      
+      // Calculate total miles or distance
+      const totalMiles = cardioMetrics.reduce((sum, metric) => {
+        if (!metric) return sum;
+        
+        // Handle distance (meters from Strava) or miles from logs
+        let distance = 0;
+        
+        if (metric.distance) {
+          // If from Strava, convert meters to miles
+          if (metric.source === 'strava') {
+            distance = metric.distance / 1609.34; // meters to miles
+          } else {
+            // If it's already in miles or another format
+            distance = parseFloat(metric.distance) || 0;
+            // Check if we need to convert from meters
+            if (distance > 1000) { // Likely in meters
+              distance = distance / 1609.34;
+            }
+          }
+        } else if (metric.miles) {
+          // Direct miles value
+          distance = parseFloat(metric.miles) || 0;
+        }
+        
+        return sum + (isNaN(distance) ? 0 : distance);
       }, 0);
       
-      // Calculate exercise load based on heart rate and duration
-      // This is a simple formula that can be refined: duration(min) * avg_heart_rate / 100
-      const exerciseLoads = cardioEntries.map(entry => {
-        const duration = parseFloat(entry.duration || 0) || 30; // Default to 30 mins if not specified
-        const heartRate = parseFloat(entry.heart_rate || 0) || 130; // Default to 130 if not specified
+      // Process health metrics into exercise loads
+      const exerciseLoads = cardioMetrics.map(metric => {
+        if (!metric) return null;
+        
+        // Convert date from Firestore timestamp if needed
+        let metricDate;
+        if (metric.date && typeof metric.date.toDate === 'function') {
+          metricDate = metric.date.toDate();
+        } else if (metric.date instanceof Date) {
+          metricDate = metric.date;
+        } else {
+          metricDate = new Date(metric.date || Date.now());
+        }
+        
+        // Handle duration in various formats
+        let duration = 0;
+        if (metric.duration) {
+          duration = parseFloat(metric.duration);
+          // If from Strava, duration is in seconds, convert to minutes
+          if (metric.source === 'strava' && duration > 500) { // Likely in seconds
+            duration = duration / 60;
+          }
+        } else {
+          duration = 30; // Default
+        }
+        
+        // Handle heart rate in various formats
+        let heartRate = 0;
+        if (metric.averageHeartRate) {
+          heartRate = parseFloat(metric.averageHeartRate);
+        } else if (metric.heart_rate) {
+          heartRate = parseFloat(metric.heart_rate);
+        } else if (metric.heartRate) {
+          heartRate = parseFloat(metric.heartRate);
+        } else {
+          heartRate = 130; // Default
+        }
+        
+        // Get activity type
+        const activity = metric.activityType || metric.activity_type || 'exercise';
+        
+        // Calculate load based on duration and heart rate
+        const load = (duration * heartRate) / 100;
+        
         return {
-          date: new Date(entry.date),
-          load: (duration * heartRate) / 100,
-          activity: entry.activity_type || 'exercise',
-          duration,
-          heartRate,
-          id: entry.id
+          date: metricDate,
+          load: load,
+          activity: activity,
+          duration: duration,
+          heartRate: heartRate,
+          id: metric.id || `health-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          source: metric.source || 'health',
+          // Include additional data if available
+          distance: metric.distance ? 
+            (metric.source === 'strava' ? metric.distance / 1609.34 : metric.distance) : 
+            (metric.miles || 0),
+          calories: metric.calories || 0,
+          elevationGain: metric.elevationGain || 0
         };
-      });
+      }).filter(load => load !== null);
+      
+      // Sort by date
+      exerciseLoads.sort((a, b) => b.date - a.date);
       
       // Calculate weekly load
       const now = new Date();
       const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const weeklyLoads = exerciseLoads.filter(load => load.date >= oneWeekAgo);
-      const weeklyLoadSum = weeklyLoads.reduce((sum, entry) => sum + entry.load, 0);
+      const weeklyLoads = exerciseLoads.filter(load => load && load.date >= oneWeekAgo);
+      const weeklyLoadSum = weeklyLoads.reduce((sum, entry) => sum + (entry ? entry.load : 0), 0);
+      
+      // Calculate rate (percentage of days with cardio)
+      // Get unique dates with cardio activities
+      const uniqueDates = new Set(cardioMetrics.map(metric => {
+        let date;
+        if (metric.date && typeof metric.date.toDate === 'function') {
+          date = metric.date.toDate();
+        } else if (metric.date instanceof Date) {
+          date = metric.date;
+        } else {
+          date = new Date(metric.date || Date.now());
+        }
+        return date.toISOString().split('T')[0];
+      }));
+      
+      // Estimate a rate based on how many days in the last 30 had cardio
+      const daysInPeriod = 30; // Assume 30 day period
+      const rate = (uniqueDates.size / daysInPeriod) * 100;
       
       return {
         rate: rate,
-        count: cardioEntries.length,
+        count: cardioMetrics.length,
         totalMiles: totalMiles,
-        averageMiles: cardioEntries.length > 0 ? totalMiles / cardioEntries.length : 0,
+        averageMiles: cardioMetrics.length > 0 ? totalMiles / cardioMetrics.length : 0,
         exerciseLoads: exerciseLoads,
         weeklyLoad: weeklyLoadSum,
-        recentLoads: weeklyLoads
+        recentLoads: weeklyLoads,
+        source: 'health metrics'
       };
     } catch (error) {
       console.error("Error calculating cardio metrics:", error);
@@ -2120,10 +2399,11 @@ const LifeTrackerDashboard = () => {
         totalMiles: 0, 
         averageMiles: 0,
         weeklyLoad: 0,
-        recentLoads: []
+        recentLoads: [],
+        exerciseLoads: []
       };
     }
-  }, [getFilteredData]);
+  }, [getFilteredData, healthMetrics]);
 
   // Compile all metrics for overview
   const getAllMetrics = useCallback(() => {
@@ -2430,25 +2710,41 @@ const LifeTrackerDashboard = () => {
 
 
   const renderProgressBar = (label, value, target = 100) => {
-    // Add null checks
-    const safeValue = (value === undefined || value === null || isNaN(value)) ? 0 : value;
-    const safeTarget = (target === undefined || target === null || isNaN(target)) ? 100 : target;
-    const progress = Math.min(100, (safeValue / safeTarget) * 100);
-    
-    return (
-      <div className="mb-4">
-        <div className="flex justify-between mb-1">
-          <span className="text-sm font-medium text-gray-200">{label}</span>
-          <span className="text-sm font-medium text-gray-200">{Math.round(safeValue)}%</span>
+    try {
+      // Add more robust null checks
+      const safeValue = (value === undefined || value === null || isNaN(value)) ? 0 : value;
+      const safeTarget = (target === undefined || target === null || isNaN(target)) ? 100 : target;
+      const progress = Math.min(100, Math.max(0, (safeValue / safeTarget) * 100));
+      
+      return (
+        <div className="mb-4">
+          <div className="flex justify-between mb-1">
+            <span className="text-sm font-medium text-gray-200">{label || 'Progress'}</span>
+            <span className="text-sm font-medium text-gray-200">{Math.round(safeValue)}%</span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2.5">
+            <div 
+              className={`h-2.5 rounded-full ${progress >= 100 ? 'bg-green-500' : progress >= 70 ? 'bg-blue-500' : progress >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
         </div>
-        <div className="w-full bg-gray-700 rounded-full h-2.5">
-          <div 
-            className={`h-2.5 rounded-full ${progress >= 100 ? 'bg-green-500' : progress >= 70 ? 'bg-blue-500' : progress >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} 
-            style={{ width: `${progress}%` }}
-          ></div>
+      );
+    } catch (error) {
+      console.error(`Error rendering progress bar for ${label}:`, error);
+      // Fallback render for error cases
+      return (
+        <div className="mb-4">
+          <div className="flex justify-between mb-1">
+            <span className="text-sm font-medium text-gray-200">{label || 'Progress'}</span>
+            <span className="text-sm font-medium text-gray-200">0%</span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2.5">
+            <div className="h-2.5 rounded-full bg-red-500" style={{ width: '0%' }}></div>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
   };
 
   const renderDashboardHeader = () => {
@@ -2636,93 +2932,112 @@ const LifeTrackerDashboard = () => {
   };
 
   const renderHistoricalChart = (metric, title, color = '#8884d8') => {
-    const historicalData = getGroupedHistoricalData(metric);
-    
-    if (historicalData.length <= 1) {
+    try {
+      // Get data safely with error handling
+      const historicalData = getGroupedHistoricalData ? getGroupedHistoricalData(metric) : [];
+      
+      if (!historicalData || historicalData.length <= 1) {
+        return (
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 text-center">
+            <p className="text-gray-300">Not enough data for historical view</p>
+          </div>
+        );
+      }
+      
+      // Format the x-axis labels for better readability
+      const formatXAxis = (period) => {
+        // Provide default case for null/undefined
+        if (!period) return '';
+        
+        // For YYYY-MM format, convert to MMM YY
+        const parts = period.split('-');
+        if (parts.length === 2) {
+          const year = parts[0];
+          const month = parseInt(parts[1], 10);
+          if (isNaN(month) || month < 1 || month > 12) return period;
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          return `${months[month - 1]} ${year.slice(2)}`;
+        }
+        return period;
+      };
+      
+      return (
+        <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+          <h3 className="text-lg font-semibold mb-4 text-gray-200">{title || 'Historical Data'}</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={historicalData} margin={{ top: 5, right: 20, bottom: 30, left: 0 }}>
+                <defs>
+                  <linearGradient id={`gradient-${metric}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={color} stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor={color} stopOpacity={0.2}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                <XAxis 
+                  dataKey="period" 
+                  tickFormatter={formatXAxis} 
+                  tick={{ fontSize: 12, fill: '#bbb' }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={50}
+                />
+                <YAxis 
+                  domain={[0, 100]} 
+                  tick={{ fontSize: 12, fill: '#bbb' }}
+                  tickFormatter={(value) => `${value}%`}
+                />
+                <Tooltip 
+                  formatter={(value) => [`${Math.round(value)}%`, title]} 
+                  labelFormatter={formatXAxis}
+                  contentStyle={{
+                    backgroundColor: 'rgba(45, 55, 72, 0.9)',
+                    borderRadius: '5px',
+                    padding: '10px',
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                    color: '#ddd',
+                    border: '1px solid #555'
+                  }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="value" 
+                  stroke={color} 
+                  fill={`url(#gradient-${metric})`} 
+                  strokeWidth={2}
+                  activeDot={{ r: 6, strokeWidth: 0, fill: color }}
+                  isAnimationActive={true}
+                  animationDuration={1000}
+                  animationEasing="ease"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      );
+    } catch (error) {
+      console.error(`Error rendering historical chart for ${metric}:`, error);
       return (
         <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 text-center">
-          <p className="text-gray-300">Not enough data for historical view</p>
+          <p className="text-gray-300">Unable to display chart</p>
         </div>
       );
     }
-    
-    // Format the x-axis labels for better readability
-    const formatXAxis = (period) => {
-      // For YYYY-MM format, convert to MMM YY
-      const parts = period.split('-');
-      if (parts.length === 2) {
-        const year = parts[0];
-        const month = parseInt(parts[1], 10);
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        return `${months[month - 1]} ${year.slice(2)}`;
-      }
-      return period;
-    };
-    
-    return (
-      <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
-        <h3 className="text-lg font-semibold mb-4 text-gray-200">{title}</h3>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={historicalData} margin={{ top: 5, right: 20, bottom: 30, left: 0 }}>
-              <defs>
-                <linearGradient id={`gradient-${metric}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={color} stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor={color} stopOpacity={0.2}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-              <XAxis 
-                dataKey="period" 
-                tickFormatter={formatXAxis} 
-                tick={{ fontSize: 12, fill: '#bbb' }}
-                angle={-45}
-                textAnchor="end"
-                height={50}
-              />
-              <YAxis 
-                domain={[0, 100]} 
-                tick={{ fontSize: 12, fill: '#bbb' }}
-                tickFormatter={(value) => `${value}%`}
-              />
-              <Tooltip 
-                formatter={(value) => [`${Math.round(value)}%`, title]} 
-                labelFormatter={formatXAxis}
-                contentStyle={{
-                  backgroundColor: 'rgba(45, 55, 72, 0.9)',
-                  borderRadius: '5px',
-                  padding: '10px',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
-                  color: '#ddd',
-                  border: '1px solid #555'
-                }}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="value" 
-                stroke={color} 
-                fill={`url(#gradient-${metric})`} 
-                strokeWidth={2}
-                activeDot={{ r: 6, strokeWidth: 0, fill: color }}
-                isAnimationActive={true}
-                animationDuration={1000}
-                animationEasing="ease"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    );
   };
 
   // Goal Category component
   const GoalCategory = ({ title, goals }) => {
+    // Add error handling
+    if (!goals || !Array.isArray(goals) || goals.length === 0) {
+      return null; // Don't render empty categories
+    }
+    
     return (
       <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
-        <h3 className="text-lg font-semibold mb-4 text-gray-200">{title}</h3>
+        <h3 className="text-lg font-semibold mb-4 text-gray-200">{title || 'Goals'}</h3>
         <div className="space-y-4">
           {goals.map(goal => (
-            <GoalProgressBar key={goal.id} goal={goal} />
+            <GoalProgressBar key={goal?.id || Math.random().toString(36).substr(2, 9)} goal={goal} />
           ))}
         </div>
       </div>
@@ -2954,29 +3269,44 @@ const LifeTrackerDashboard = () => {
   
   // New component for rendering a goal progress bar
   const GoalProgressBar = ({ goal }) => {
-    // Handle different types of goals
-    const isRolling = goal.isRolling;
-    const progress = goal.progress || 0;
-    
-    return (
-      <div className="mb-4">
-        <div className="flex justify-between mb-1">
-          <span className="text-sm font-medium text-gray-200">{goal.description}</span>
-          <span className="text-sm font-medium text-gray-200">{Math.round(progress)}%</span>
+    try {
+      // Handle missing goal object
+      if (!goal) {
+        console.warn("GoalProgressBar received undefined goal");
+        return null;
+      }
+      
+      // Handle different types of goals with safe defaults
+      const isRolling = goal.isRolling;
+      const progress = (!isNaN(goal.progress) && goal.progress !== null && goal.progress !== undefined) 
+        ? Math.min(100, Math.max(0, goal.progress)) 
+        : 0;
+      
+      return (
+        <div className="mb-4">
+          <div className="flex justify-between mb-1">
+            <span className="text-sm font-medium text-gray-200">{goal.description || 'No description'}</span>
+            <span className="text-sm font-medium text-gray-200">{Math.round(progress)}%</span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2.5">
+            <div 
+              className={`h-2.5 rounded-full ${progress >= 100 ? 'bg-green-500' : progress >= 70 ? 'bg-blue-500' : progress >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
         </div>
-        <div className="w-full bg-gray-700 rounded-full h-2.5">
-          <div 
-            className={`h-2.5 rounded-full ${progress >= 100 ? 'bg-green-500' : progress >= 70 ? 'bg-blue-500' : progress >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} 
-            style={{ width: `${progress}%` }}
-          ></div>
-        </div>
-      </div>
-    );
+      );
+    } catch (error) {
+      console.error("Error rendering goal progress bar:", error);
+      return null; // Return nothing on error
+    }
   };
   
   // Health Metric Form component
   const HealthMetricForm = () => {
     const [showForm, setShowForm] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [formType, setFormType] = useState('health'); // 'health' or 'exercise'
     const [metricFormData, setMetricFormData] = useState({
       weight: '',
       systolic: '',
@@ -2987,6 +3317,16 @@ const LifeTrackerDashboard = () => {
       source: 'manual'
     });
     
+    const [exerciseFormData, setExerciseFormData] = useState({
+      activity_type: 'running',
+      duration: '30',
+      miles: '',
+      heart_rate: '130',
+      notes: '',
+      source: 'manual',
+      cardio: 'Yes' // This ensures it's recognized as exercise data
+    });
+    
     const handleMetricChange = (e) => {
       const { name, value } = e.target;
       setMetricFormData(prev => ({
@@ -2995,164 +3335,425 @@ const LifeTrackerDashboard = () => {
       }));
     };
     
+    const handleExerciseChange = (e) => {
+      const { name, value } = e.target;
+      setExerciseFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    };
+    
+    const handleFormTypeChange = (type) => {
+      setFormType(type);
+    };
+    
     const handleMetricSubmit = async (e) => {
       e.preventDefault();
-      await addHealthMetric(metricFormData);
       
-      // Reset form
-      setMetricFormData({
-        weight: '',
-        systolic: '',
-        diastolic: '',
-        ldl: '',
-        hdl: '',
-        notes: '',
-        source: 'manual'
+      // Use appropriate form data based on selected form type
+      const formData = formType === 'health' ? metricFormData : exerciseFormData;
+      
+      // Form validation - require at least one field to be filled
+      const hasData = Object.entries(formData).some(([key, value]) => {
+        return !['source', 'notes', 'cardio'].includes(key) && value !== '';
       });
       
-      setShowForm(false);
+      if (!hasData) {
+        setError(`Please fill in at least one ${formType} field`);
+        return;
+      }
+      
+      try {
+        setIsSubmitting(true);
+        await addHealthMetric(formData);
+        
+        // Reset form
+        if (formType === 'health') {
+          setMetricFormData({
+            weight: '',
+            systolic: '',
+            diastolic: '',
+            ldl: '',
+            hdl: '',
+            notes: '',
+            source: 'manual'
+          });
+        } else {
+          setExerciseFormData({
+            activity_type: 'running',
+            duration: '30',
+            miles: '',
+            heart_rate: '130',
+            notes: '',
+            source: 'manual',
+            cardio: 'Yes'
+          });
+        }
+        
+        // Refresh health metrics data
+        fetchHealthMetrics();
+        
+        setShowForm(false);
+      } catch (err) {
+        console.error("Error submitting health metric:", err);
+        setError(`Failed to save ${formType} data: ${err.message}`);
+      } finally {
+        setIsSubmitting(false);
+      }
     };
     
     return (
       <>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold text-gray-100">Health Metrics</h2>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white"
-          >
-            {showForm ? 'Cancel' : 'Add Health Metric'}
-          </button>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => {
+                setFormType('exercise');
+                setShowForm(!showForm);
+              }}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white"
+              disabled={isSubmitting}
+            >
+              {showForm && formType === 'exercise' ? 'Cancel' : 'Add Exercise'}
+            </button>
+            <button
+              onClick={() => {
+                setFormType('health');
+                setShowForm(!showForm);
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white"
+              disabled={isSubmitting}
+            >
+              {showForm && formType === 'health' ? 'Cancel' : 'Add Health Metric'}
+            </button>
+          </div>
         </div>
         
         {showForm && (
           <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
-            <h3 className="text-lg font-semibold mb-4 text-gray-200">Add Health Measurement</h3>
+            <div className="flex mb-4 border-b border-gray-700">
+              <button
+                onClick={() => handleFormTypeChange('health')}
+                className={`px-4 py-2 rounded-t-lg ${
+                  formType === 'health' 
+                    ? 'bg-blue-600 text-white font-medium' 
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                Health Measurements
+              </button>
+              <button
+                onClick={() => handleFormTypeChange('exercise')}
+                className={`px-4 py-2 rounded-t-lg ${
+                  formType === 'exercise' 
+                    ? 'bg-green-600 text-white font-medium' 
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                Exercise Data
+              </button>
+            </div>
             
-            <form onSubmit={handleMetricSubmit}>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div>
-                  <label htmlFor="weight" className="block text-sm font-medium mb-1 text-gray-300">
-                    Weight (lbs)
-                  </label>
-                  <input
-                    type="number"
-                    id="weight"
-                    name="weight"
-                    value={metricFormData.weight}
-                    onChange={handleMetricChange}
-                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                    step="0.1"
-                  />
-                </div>
+            {formType === 'health' ? (
+              <>
+                <h3 className="text-lg font-semibold mb-4 text-gray-200">Add Health Measurement</h3>
                 
-                <div>
-                  <label htmlFor="systolic" className="block text-sm font-medium mb-1 text-gray-300">
-                    Systolic BP
-                  </label>
-                  <input
-                    type="number"
-                    id="systolic"
-                    name="systolic"
-                    value={metricFormData.systolic}
-                    onChange={handleMetricChange}
-                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  />
-                </div>
+                <form onSubmit={handleMetricSubmit}>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <label htmlFor="weight" className="block text-sm font-medium mb-1 text-gray-300">
+                        Weight (lbs)
+                      </label>
+                      <input
+                        type="number"
+                        id="weight"
+                        name="weight"
+                        value={metricFormData.weight}
+                        onChange={handleMetricChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                        step="0.1"
+                        min="0"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="systolic" className="block text-sm font-medium mb-1 text-gray-300">
+                        Systolic BP
+                      </label>
+                      <input
+                        type="number"
+                        id="systolic"
+                        name="systolic"
+                        value={metricFormData.systolic}
+                        onChange={handleMetricChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                        min="0"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="diastolic" className="block text-sm font-medium mb-1 text-gray-300">
+                        Diastolic BP
+                      </label>
+                      <input
+                        type="number"
+                        id="diastolic"
+                        name="diastolic"
+                        value={metricFormData.diastolic}
+                        onChange={handleMetricChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                        min="0"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="ldl" className="block text-sm font-medium mb-1 text-gray-300">
+                        LDL (mg/dL)
+                      </label>
+                      <input
+                        type="number"
+                        id="ldl"
+                        name="ldl"
+                        value={metricFormData.ldl}
+                        onChange={handleMetricChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                        min="0"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="hdl" className="block text-sm font-medium mb-1 text-gray-300">
+                        HDL (mg/dL)
+                      </label>
+                      <input
+                        type="number"
+                        id="hdl"
+                        name="hdl"
+                        value={metricFormData.hdl}
+                        onChange={handleMetricChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                        min="0"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="source" className="block text-sm font-medium mb-1 text-gray-300">
+                        Source
+                      </label>
+                      <select
+                        id="source"
+                        name="source"
+                        value={metricFormData.source}
+                        onChange={handleMetricChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                      >
+                        <option value="manual">Manual Entry</option>
+                        <option value="doctor">Doctor Visit</option>
+                        <option value="lab">Lab Test</option>
+                        <option value="device">Device Measurement</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div className="mb-4">
+                    <label htmlFor="notes" className="block text-sm font-medium mb-1 text-gray-300">
+                      Notes (optional)
+                    </label>
+                    <textarea
+                      id="notes"
+                      name="notes"
+                      value={metricFormData.notes}
+                      onChange={handleMetricChange}
+                      className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                      rows={2}
+                    ></textarea>
+                  </div>
+                  
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowForm(false)}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-md mr-3"
+                      disabled={isSubmitting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-solid border-white border-t-transparent"></div>
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Health Metric"
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold mb-4 text-gray-200">Add Exercise Data</h3>
                 
-                <div>
-                  <label htmlFor="diastolic" className="block text-sm font-medium mb-1 text-gray-300">
-                    Diastolic BP
-                  </label>
-                  <input
-                    type="number"
-                    id="diastolic"
-                    name="diastolic"
-                    value={metricFormData.diastolic}
-                    onChange={handleMetricChange}
-                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="ldl" className="block text-sm font-medium mb-1 text-gray-300">
-                    LDL (mg/dL)
-                  </label>
-                  <input
-                    type="number"
-                    id="ldl"
-                    name="ldl"
-                    value={metricFormData.ldl}
-                    onChange={handleMetricChange}
-                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="hdl" className="block text-sm font-medium mb-1 text-gray-300">
-                    HDL (mg/dL)
-                  </label>
-                  <input
-                    type="number"
-                    id="hdl"
-                    name="hdl"
-                    value={metricFormData.hdl}
-                    onChange={handleMetricChange}
-                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="source" className="block text-sm font-medium mb-1 text-gray-300">
-                    Source
-                  </label>
-                  <select
-                    id="source"
-                    name="source"
-                    value={metricFormData.source}
-                    onChange={handleMetricChange}
-                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  >
-                    <option value="manual">Manual Entry</option>
-                    <option value="doctor">Doctor Visit</option>
-                    <option value="lab">Lab Test</option>
-                    <option value="device">Device Measurement</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div className="mb-4">
-                <label htmlFor="notes" className="block text-sm font-medium mb-1 text-gray-300">
-                  Notes (optional)
-                </label>
-                <textarea
-                  id="notes"
-                  name="notes"
-                  value={metricFormData.notes}
-                  onChange={handleMetricChange}
-                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  rows={2}
-                ></textarea>
-              </div>
-              
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
-                >
-                  Save Health Metric
-                </button>
-              </div>
-            </form>
+                <form onSubmit={handleMetricSubmit}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label htmlFor="activity_type" className="block text-sm font-medium mb-1 text-gray-300">
+                        Activity Type
+                      </label>
+                      <select
+                        id="activity_type"
+                        name="activity_type"
+                        value={exerciseFormData.activity_type}
+                        onChange={handleExerciseChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                      >
+                        <option value="running">Running</option>
+                        <option value="cycling">Cycling</option>
+                        <option value="swimming">Swimming</option>
+                        <option value="walking">Walking</option>
+                        <option value="hiking">Hiking</option>
+                        <option value="climbing">Climbing</option>
+                        <option value="weightlifting">Weightlifting</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="duration" className="block text-sm font-medium mb-1 text-gray-300">
+                        Duration (minutes)
+                      </label>
+                      <input
+                        type="number"
+                        id="duration"
+                        name="duration"
+                        value={exerciseFormData.duration}
+                        onChange={handleExerciseChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                        min="0"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="miles" className="block text-sm font-medium mb-1 text-gray-300">
+                        Distance (miles)
+                      </label>
+                      <input
+                        type="number"
+                        id="miles"
+                        name="miles"
+                        value={exerciseFormData.miles}
+                        onChange={handleExerciseChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                        step="0.1"
+                        min="0"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="heart_rate" className="block text-sm font-medium mb-1 text-gray-300">
+                        Avg. Heart Rate (BPM)
+                      </label>
+                      <input
+                        type="number"
+                        id="heart_rate"
+                        name="heart_rate"
+                        value={exerciseFormData.heart_rate}
+                        onChange={handleExerciseChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                        min="0"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="mb-4">
+                    <label htmlFor="exerciseNotes" className="block text-sm font-medium mb-1 text-gray-300">
+                      Notes (optional)
+                    </label>
+                    <textarea
+                      id="exerciseNotes"
+                      name="notes"
+                      value={exerciseFormData.notes}
+                      onChange={handleExerciseChange}
+                      className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                      rows={2}
+                    ></textarea>
+                  </div>
+                  
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowForm(false)}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-md mr-3"
+                      disabled={isSubmitting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md flex items-center"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-solid border-white border-t-transparent"></div>
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Exercise"
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
           </div>
         )}
       </>
     );
   };
   
+  // Helper function to group activities by type
+  const groupActivitiesByType = (activities) => {
+    if (!activities || !Array.isArray(activities) || activities.length === 0) {
+      return {};
+    }
+    
+    const groupedActivities = {};
+    
+    activities.forEach(activity => {
+      if (!activity) return;
+      
+      let type = activity.activity || activity.activityType || 'Other';
+      // Normalize activity type
+      type = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+      
+      if (!groupedActivities[type]) {
+        groupedActivities[type] = {
+          count: 0,
+          totalDistance: 0,
+          totalDuration: 0,
+          activities: []
+        };
+      }
+      
+      groupedActivities[type].count++;
+      groupedActivities[type].totalDistance += parseFloat(activity.distance || 0);
+      groupedActivities[type].totalDuration += parseFloat(activity.duration || 0);
+      groupedActivities[type].activities.push(activity);
+    });
+    
+    return groupedActivities;
+  };
+
   const renderHealthTab = () => {
-    const metrics = getAllMetrics().health;
-    const organizedGoals = organizeGoalsByCategory();
+    const metrics = getAllMetrics()?.health || {};
+    const organizedGoals = organizeGoalsByCategory() || {};
     const healthGoals = Object.entries(organizedGoals)
       .filter(([category]) => category === "Strength" || category === "Climbing" || category === "Running" || 
                             category === "Direct metrics" || category === "Sleep")
@@ -3161,11 +3762,80 @@ const LifeTrackerDashboard = () => {
         return acc;
       }, {});
     
+    // Group activities by type for summary
+    const exerciseLoads = metrics?.health?.cardio?.exerciseLoads || [];
+    const activitySummary = groupActivitiesByType(exerciseLoads);
+    
     return (
       <>
         <HealthMetricForm />
         
-        {/* Recent Health Measurements Table removed */}
+        {/* Loading indicator */}
+        {isLoadingHealthMetrics && (
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
+            <div className="flex justify-center items-center py-6">
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-500 border-r-transparent"></div>
+              <p className="ml-4 text-gray-300">Loading health metrics...</p>
+            </div>
+          </div>
+        )}
+        
+        {/* Activity summary section */}
+        <div className="mb-6">
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+            <h3 className="text-lg font-semibold mb-3 text-gray-200">Activity Summary</h3>
+            
+            {Object.keys(activitySummary).length > 0 ? (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div className="bg-gray-700 p-3 rounded-lg">
+                    <div className="text-sm text-gray-400">Total Activities</div>
+                    <div className="text-xl font-bold text-gray-100">{exerciseLoads.length}</div>
+                  </div>
+                  
+                  <div className="bg-gray-700 p-3 rounded-lg">
+                    <div className="text-sm text-gray-400">Total Distance</div>
+                    <div className="text-xl font-bold text-gray-100">
+                      {exerciseLoads.reduce((sum, activity) => sum + parseFloat(activity.distance || 0), 0).toFixed(1)} mi
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-700 p-3 rounded-lg">
+                    <div className="text-sm text-gray-400">Total Duration</div>
+                    <div className="text-xl font-bold text-gray-100">
+                      {Math.round(exerciseLoads.reduce((sum, activity) => sum + parseFloat(activity.duration || 0), 0))} min
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-700 p-3 rounded-lg">
+                    <div className="text-sm text-gray-400">Activity Types</div>
+                    <div className="text-xl font-bold text-gray-100">{Object.keys(activitySummary).length}</div>
+                  </div>
+                </div>
+                
+                {/* Activity type breakdown */}
+                <div>
+                  <h4 className="text-sm font-medium mb-2 text-gray-400">Activities by Type</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    {Object.entries(activitySummary)
+                      .sort(([, a], [, b]) => b.count - a.count)
+                      .slice(0, 6)
+                      .map(([type, data]) => (
+                        <div key={type} className="bg-gray-750 rounded p-2 flex justify-between items-center">
+                          <div className="font-medium text-gray-300">{type}</div>
+                          <div>
+                            <span className="text-sm bg-gray-700 px-2 py-0.5 rounded text-gray-300">{data.count}</span>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-gray-400 py-4">No activity data available. Add exercise activities or import from Strava.</p>
+            )}
+          </div>
+        </div>
         
         <div className="mb-6">
           <div className="flex justify-between items-center mb-4">
@@ -3192,21 +3862,30 @@ const LifeTrackerDashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
               <h3 className="text-lg font-semibold mb-2 text-gray-200">Weekly Load</h3>
-              <div className="text-3xl font-bold text-white mb-1">{Math.round(metrics.health.cardio.weeklyLoad || 0)}</div>
+              <div className="text-3xl font-bold text-white mb-1">
+                {Math.round(metrics?.health?.cardio?.weeklyLoad || 0)}
+              </div>
               <p className="text-gray-400 text-sm">Training load in the past 7 days</p>
             </div>
             
             <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
               <h3 className="text-lg font-semibold mb-2 text-gray-200">Recent Activities</h3>
-              <div className="text-3xl font-bold text-white mb-1">{metrics.health.cardio.recentLoads?.length || 0}</div>
+              <div className="text-3xl font-bold text-white mb-1">
+                {metrics?.health?.cardio?.recentLoads?.length || 0}
+              </div>
               <p className="text-gray-400 text-sm">Workouts in the selected period</p>
             </div>
             
             <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
               <h3 className="text-lg font-semibold mb-2 text-gray-200">Average Intensity</h3>
               <div className="text-3xl font-bold text-white mb-1">
-                {metrics.health.cardio.recentLoads?.length > 0 
-                  ? Math.round(metrics.health.cardio.recentLoads.reduce((sum, load) => sum + load.heartRate, 0) / metrics.health.cardio.recentLoads.length) 
+                {metrics?.health?.cardio?.recentLoads?.length > 0 && Array.isArray(metrics.health.cardio.recentLoads)
+                  ? Math.round(
+                      metrics.health.cardio.recentLoads.reduce(
+                        (sum, load) => sum + (load?.heartRate || 0), 
+                        0
+                      ) / metrics.health.cardio.recentLoads.length
+                    ) 
                   : '-'}
               </div>
               <p className="text-gray-400 text-sm">Average heart rate (BPM)</p>
@@ -3215,9 +3894,9 @@ const LifeTrackerDashboard = () => {
           
           {/* Recent exercise loads */}
           <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
-            <h3 className="text-lg font-semibold mb-4 text-gray-200">Recent Exercise Loads</h3>
+            <h3 className="text-lg font-semibold mb-4 text-gray-200">Recent Exercise Activities</h3>
             
-            {metrics.health.cardio.recentLoads?.length > 0 ? (
+            {metrics?.health?.cardio?.recentLoads?.length > 0 && Array.isArray(metrics.health.cardio.recentLoads) ? (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-700">
                   <thead className="bg-gray-900">
@@ -3225,30 +3904,59 @@ const LifeTrackerDashboard = () => {
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Activity</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Duration</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Distance</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Heart Rate</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Load</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Source</th>
                     </tr>
                   </thead>
                   <tbody className="bg-gray-800 divide-y divide-gray-700">
-                    {metrics.health.cardio.recentLoads.map((load) => (
-                      <tr key={load.id}>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
-                          {load.date.toLocaleDateString()}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300 capitalize">
-                          {load.activity}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
-                          {load.duration} min
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
-                          {load.heartRate} BPM
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300 font-medium">
-                          {Math.round(load.load)}
-                        </td>
-                      </tr>
-                    ))}
+                    {metrics.health.cardio.recentLoads.map((load, index) => {
+                      // Skip invalid loads
+                      if (!load) return null;
+                      
+                      return (
+                        <tr key={load.id || `load-${index}`}>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                            {load.date ? (
+                              typeof load.date.toLocaleDateString === 'function' 
+                                ? load.date.toLocaleDateString()
+                                : new Date(load.date).toLocaleDateString()
+                            ) : 'N/A'}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300 capitalize">
+                            {load.activity || 'N/A'}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                            {load.duration || 0} min
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                            {load.distance ? `${load.distance.toFixed(2)} mi` : '-'}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                            {load.heartRate || 0} BPM
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300 font-medium">
+                            {Math.round(load.load || 0)}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm">
+                            {load.source === 'strava' ? (
+                              <span className="bg-orange-900 text-orange-300 px-2 py-0.5 rounded-full text-xs">
+                                Strava
+                              </span>
+                            ) : load.source === 'googleFit' ? (
+                              <span className="bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full text-xs">
+                                Google Fit
+                              </span>
+                            ) : (
+                              <span className="bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full text-xs">
+                                Manual
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -3263,48 +3971,79 @@ const LifeTrackerDashboard = () => {
             <h3 className="text-lg font-semibold mb-4 text-gray-200">Strength (400 Challenge)</h3>
             <div className="mb-6">
               <div className="flex justify-between mb-1">
-                <span className="text-lg font-bold text-gray-200">Total: {metrics.strength.total}/{goals.health.strengthChallengeTarget.value}</span>
-                <span className="text-lg font-bold text-gray-200">{Math.round(metrics.strength.progress)}%</span>
+                <span className="text-lg font-bold text-gray-200">
+                  Total: {metrics?.strength?.total || 0}/{goals?.health?.strengthChallengeTarget?.value || 400}
+                </span>
+                <span className="text-lg font-bold text-gray-200">
+                  {Math.round(metrics?.strength?.progress || 0)}%
+                </span>
               </div>
               <div className="w-full bg-gray-700 rounded-full h-4 border border-gray-600">
-                <div className="bg-blue-600 h-4 rounded-full" style={{ width: `${metrics.strength.progress}%` }}></div>
+                <div 
+                  className="bg-blue-600 h-4 rounded-full" 
+                  style={{ width: `${metrics?.strength?.progress || 0}%` }}
+                ></div>
               </div>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="font-medium text-gray-300">Pushups: {metrics.strength.pushups}</p>
+                <p className="font-medium text-gray-300">
+                  Pushups: {metrics?.strength?.pushups || 0}
+                </p>
                 <div className="w-full bg-gray-700 rounded-full h-2 border border-gray-600">
-                  <div className="bg-green-500 h-2 rounded-full" style={{ width: `${(metrics.strength.pushups/100)*100}%` }}></div>
+                  <div 
+                    className="bg-green-500 h-2 rounded-full" 
+                    style={{ width: `${((metrics?.strength?.pushups || 0)/100)*100}%` }}
+                  ></div>
                 </div>
               </div>
               <div>
-                <p className="font-medium text-gray-300">Rows: {metrics.strength.rows}</p>
+                <p className="font-medium text-gray-300">
+                  Rows: {metrics?.strength?.rows || 0}
+                </p>
                 <div className="w-full bg-gray-700 rounded-full h-2 border border-gray-600">
-                  <div className="bg-yellow-500 h-2 rounded-full" style={{ width: `${(metrics.strength.rows/100)*100}%` }}></div>
+                  <div 
+                    className="bg-yellow-500 h-2 rounded-full" 
+                    style={{ width: `${((metrics?.strength?.rows || 0)/100)*100}%` }}
+                  ></div>
                 </div>
               </div>
               <div>
-                <p className="font-medium text-gray-300">Situps: {metrics.strength.situps}</p>
+                <p className="font-medium text-gray-300">
+                  Situps: {metrics?.strength?.situps || 0}
+                </p>
                 <div className="w-full bg-gray-700 rounded-full h-2 border border-gray-600">
-                  <div className="bg-red-500 h-2 rounded-full" style={{ width: `${(metrics.strength.situps/100)*100}%` }}></div>
+                  <div 
+                    className="bg-red-500 h-2 rounded-full" 
+                    style={{ width: `${((metrics?.strength?.situps || 0)/100)*100}%` }}
+                  ></div>
                 </div>
               </div>
               <div>
-                <p className="font-medium text-gray-300">Squats: {metrics.strength.squats}</p>
+                <p className="font-medium text-gray-300">
+                  Squats: {metrics?.strength?.squats || 0}
+                </p>
                 <div className="w-full bg-gray-700 rounded-full h-2 border border-gray-600">
-                  <div className="bg-purple-500 h-2 rounded-full" style={{ width: `${(metrics.strength.squats/100)*100}%` }}></div>
+                  <div 
+                    className="bg-purple-500 h-2 rounded-full" 
+                    style={{ width: `${((metrics?.strength?.squats || 0)/100)*100}%` }}
+                  ></div>
                 </div>
               </div>
             </div>
-            <p className="text-sm text-gray-400 mt-4">Target: Complete {goals.health.strengthChallengeTarget.value} Challenge by May 1st</p>
+            <p className="text-sm text-gray-400 mt-4">
+              Target: Complete {goals?.health?.strengthChallengeTarget?.value || 400} Challenge by May 1st
+            </p>
           </div>
           
           <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
             <h3 className="text-lg font-semibold mb-4 text-gray-200">Sleep</h3>
-            {renderProgressBar("Bed On Time", metrics.sleep.bedOnTime.rate, 100)}
-            {renderProgressBar("Up On Time", metrics.sleep.upOnTime.rate, 100)}
-            <p className="text-sm text-gray-400 mt-2">Target: {goals.health.sleepOnTimePercentage.value}% within one hour of bedtime weekly average</p>
+            {renderProgressBar("Bed On Time", metrics?.sleep?.bedOnTime?.rate || 0, 100)}
+            {renderProgressBar("Up On Time", metrics?.sleep?.upOnTime?.rate || 0, 100)}
+            <p className="text-sm text-gray-400 mt-2">
+              Target: {goals?.health?.sleepOnTimePercentage?.value || 90}% within one hour of bedtime weekly average
+            </p>
           </div>
         </div>
         

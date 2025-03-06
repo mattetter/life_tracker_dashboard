@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="100" fill="#3498db" />
+  
+  <!-- Simple jogger in profile view -->
+  <!-- Head -->
+  <circle cx="180" cy="170" r="40" fill="white" />
+  
+  <!-- Body -->
+  <line x1="180" y1="210" x2="180" y2="320" stroke="white" stroke-width="20" stroke-linecap="round" />
+  
+  <!-- Arms -->
+  <line x1="180" y1="240" x2="140" y2="290" stroke="white" stroke-width="16" stroke-linecap="round" />
+  <line x1="180" y1="240" x2="220" y2="290" stroke="white" stroke-width="16" stroke-linecap="round" />
+  
+  <!-- Legs -->
+  <line x1="180" y1="320" x2="140" y2="400" stroke="white" stroke-width="20" stroke-linecap="round" />
+  <line x1="180" y1="320" x2="220" y2="400" stroke="white" stroke-width="20" stroke-linecap="round" />
+  
+  <!-- Small backpack -->
+  <rect x="200" y="240" width="30" height="45" rx="5" fill="white" />
+  <line x1="200" y1="250" x2="180" y2="250" stroke="white" stroke-width="8" stroke-linecap="round" />
+  
+  <!-- Simple ground line -->
+  <line x1="100" y1="430" x2="412" y2="430" stroke="white" stroke-width="6" />
+  
+  <!-- Motion lines (simpler) -->
+  <line x1="240" y1="280" x2="260" y2="280" stroke="white" stroke-width="8" stroke-linecap="round" />
+  <line x1="250" y1="310" x2="280" y2="310" stroke="white" stroke-width="8" stroke-linecap="round" />
+  <line x1="260" y1="340" x2="300" y2="340" stroke="white" stroke-width="8" stroke-linecap="round" />
+</svg>
