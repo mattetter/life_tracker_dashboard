@@ -3757,10 +3757,9 @@ const LifeTrackerDashboard = () => {
           <h2 className="text-2xl font-bold text-gray-100 mb-4">Status</h2>
           
           {/* Video game style health bars */}
-          {renderHealthBar("Social", Math.round(metrics.social.family.rate), 100, "bg-blue-600", "bg-blue-900", "👥")}
+          {renderHealthBar("Social Life", Math.round(metrics.social.family.rate), 100, "bg-blue-600", "bg-blue-900", "👥")}
           {renderHealthBar("Wellbeing", Math.round(metrics.wellbeing.journaling.totalRate), 100, "bg-purple-600", "bg-purple-900", "✨")}
-          {renderHealthBar("Strength", metrics.health.strength.total, goals.health.strengthChallengeTarget.value, "bg-green-600", "bg-green-900", "💪")}
-          {renderHealthBar("Productivity", Math.round(metrics.productivity.code.rate), 100, "bg-amber-600", "bg-amber-900", "⚡")}
+          {renderHealthBar("Health", metrics.health.strength.total, goals.health.strengthChallengeTarget.value, "bg-green-600", "bg-green-900", "💪")}
         </div>
         
         {/* Projects Section */}
