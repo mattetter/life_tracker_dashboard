@@ -873,12 +873,17 @@ const LifeTrackerDashboard = () => {
       bed_on_time: "No",
       up_on_time: "No",
       
+      // Exercise Fields
+      miles: 0,
+      duration: 30,
+      heart_rate: 130,
+      activity_type: "running",
+      
       // Numeric Fields
       pushups: 0,
       rows: 0,
       situps: 0,
-      squats: 0,
-      miles: 0
+      squats: 0
     });
     
     // State for tracking if sections are expanded
@@ -947,12 +952,17 @@ const LifeTrackerDashboard = () => {
         bed_on_time: "No",
         up_on_time: "No",
         
+        // Exercise Fields
+        miles: 0,
+        duration: 30,
+        heart_rate: 130,
+        activity_type: "running",
+        
         // Numeric Fields
         pushups: 0,
         rows: 0,
         situps: 0,
-        squats: 0,
-        miles: 0
+        squats: 0
       });
       
       // Reset expanded sections
@@ -1364,18 +1374,65 @@ const LifeTrackerDashboard = () => {
                 </div>
                 
                 {formData.cardio === "Yes" && (
-                  <div>
-                    <label htmlFor="miles" className="block mb-1 text-gray-200">Miles</label>
-                    <input
-                      type="number"
-                      id="miles"
-                      name="miles"
-                      step="0.1"
-                      min="0"
-                      value={formData.miles}
-                      onChange={handleChange}
-                      className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                    />
+                  <div className="space-y-3">
+                    <div>
+                      <label htmlFor="miles" className="block mb-1 text-gray-200">Miles</label>
+                      <input
+                        type="number"
+                        id="miles"
+                        name="miles"
+                        step="0.1"
+                        min="0"
+                        value={formData.miles}
+                        onChange={handleChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="duration" className="block mb-1 text-gray-200">Duration (minutes)</label>
+                      <input
+                        type="number"
+                        id="duration"
+                        name="duration"
+                        step="1"
+                        min="0"
+                        value={formData.duration || ""}
+                        onChange={handleChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="heart_rate" className="block mb-1 text-gray-200">Avg Heart Rate (BPM)</label>
+                      <input
+                        type="number"
+                        id="heart_rate"
+                        name="heart_rate"
+                        step="1"
+                        min="0"
+                        value={formData.heart_rate || ""}
+                        onChange={handleChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="activity_type" className="block mb-1 text-gray-200">Activity Type</label>
+                      <select
+                        id="activity_type"
+                        name="activity_type"
+                        value={formData.activity_type || "running"}
+                        onChange={handleChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      >
+                        <option value="running">Running</option>
+                        <option value="walking">Walking</option>
+                        <option value="cycling">Cycling</option>
+                        <option value="swimming">Swimming</option>
+                        <option value="hiking">Hiking</option>
+                        <option value="climbing">Climbing</option>
+                        <option value="weightlifting">Weightlifting</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
                   </div>
                 )}
                 
@@ -2018,11 +2075,35 @@ const LifeTrackerDashboard = () => {
       return sum + (isNaN(miles) ? 0 : miles);
     }, 0);
     
+    // Calculate exercise load based on heart rate and duration
+    // This is a simple formula that can be refined: duration(min) * avg_heart_rate / 100
+    const exerciseLoads = cardioEntries.map(entry => {
+      const duration = parseFloat(entry.duration || 0) || 30; // Default to 30 mins if not specified
+      const heartRate = parseFloat(entry.heart_rate || 0) || 130; // Default to 130 if not specified
+      return {
+        date: new Date(entry.date),
+        load: (duration * heartRate) / 100,
+        activity: entry.activity_type || 'exercise',
+        duration,
+        heartRate,
+        id: entry.id
+      };
+    });
+    
+    // Calculate weekly load
+    const now = new Date();
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weeklyLoads = exerciseLoads.filter(load => load.date >= oneWeekAgo);
+    const weeklyLoadSum = weeklyLoads.reduce((sum, entry) => sum + entry.load, 0);
+    
     return {
       rate: rate,
       count: cardioEntries.length,
       totalMiles: totalMiles,
-      averageMiles: cardioEntries.length > 0 ? totalMiles / cardioEntries.length : 0
+      averageMiles: cardioEntries.length > 0 ? totalMiles / cardioEntries.length : 0,
+      exerciseLoads: exerciseLoads,
+      weeklyLoad: weeklyLoadSum,
+      recentLoads: weeklyLoads
     };
   }, [getFilteredData]);
 
@@ -3066,57 +3147,97 @@ const LifeTrackerDashboard = () => {
       <>
         <HealthMetricForm />
         
-        {/* Recent Health Metrics Table */}
-        <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
-          <h3 className="text-lg font-semibold mb-4 text-gray-200">Recent Health Measurements</h3>
+        {/* Recent Health Measurements Table removed */}
+        
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-gray-100">Exercise Load</h2>
+            <div className="relative inline-block">
+              <select 
+                className="bg-gray-700 border border-gray-600 text-white rounded-lg px-4 py-2 appearance-none pr-8"
+                onChange={(e) => setDateRange(e.target.value)}
+                value={dateRange}
+              >
+                <option value="7days">7 Days</option>
+                <option value="30days">30 Days</option>
+                <option value="90days">3 Months</option>
+                <option value="all">All Time</option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
+                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                  <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
           
-          {isLoadingHealthMetrics ? (
-            <div className="text-center py-4">
-              <div className="inline-block h-5 w-5 animate-spin rounded-full border-3 border-solid border-blue-400 border-r-transparent"></div>
-              <p className="mt-2 text-sm text-gray-400">Loading health metrics...</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+              <h3 className="text-lg font-semibold mb-2 text-gray-200">Weekly Load</h3>
+              <div className="text-3xl font-bold text-white mb-1">{Math.round(metrics.health.cardio.weeklyLoad || 0)}</div>
+              <p className="text-gray-400 text-sm">Training load in the past 7 days</p>
             </div>
-          ) : healthMetrics.length === 0 ? (
-            <p className="text-gray-400 py-4 text-center">No health metrics recorded yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-700">
-                <thead className="bg-gray-700">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Date</th>
-                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Weight</th>
-                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">BP</th>
-                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">LDL</th>
-                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">HDL</th>
-                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Source</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-gray-800 divide-y divide-gray-700">
-                  {healthMetrics.slice(0, 5).map((metric) => (
-                    <tr key={metric.id}>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
-                        {metric.date.toLocaleDateString()}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
-                        {metric.weight ? `${metric.weight} lbs` : '-'}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
-                        {metric.systolic && metric.diastolic ? `${metric.systolic}/${metric.diastolic}` : '-'}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
-                        {metric.ldl ? `${metric.ldl} mg/dL` : '-'}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
-                        {metric.hdl ? `${metric.hdl} mg/dL` : '-'}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300 capitalize">
-                        {metric.source || 'manual'}
-                      </td>
+            
+            <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+              <h3 className="text-lg font-semibold mb-2 text-gray-200">Recent Activities</h3>
+              <div className="text-3xl font-bold text-white mb-1">{metrics.health.cardio.recentLoads?.length || 0}</div>
+              <p className="text-gray-400 text-sm">Workouts in the selected period</p>
+            </div>
+            
+            <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+              <h3 className="text-lg font-semibold mb-2 text-gray-200">Average Intensity</h3>
+              <div className="text-3xl font-bold text-white mb-1">
+                {metrics.health.cardio.recentLoads?.length > 0 
+                  ? Math.round(metrics.health.cardio.recentLoads.reduce((sum, load) => sum + load.heartRate, 0) / metrics.health.cardio.recentLoads.length) 
+                  : '-'}
+              </div>
+              <p className="text-gray-400 text-sm">Average heart rate (BPM)</p>
+            </div>
+          </div>
+          
+          {/* Recent exercise loads */}
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-200">Recent Exercise Loads</h3>
+            
+            {metrics.health.cardio.recentLoads?.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-700">
+                  <thead className="bg-gray-900">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Activity</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Duration</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Heart Rate</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Load</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody className="bg-gray-800 divide-y divide-gray-700">
+                    {metrics.health.cardio.recentLoads.map((load) => (
+                      <tr key={load.id}>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                          {load.date.toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300 capitalize">
+                          {load.activity}
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                          {load.duration} min
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                          {load.heartRate} BPM
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300 font-medium">
+                          {Math.round(load.load)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-gray-400 text-center py-4">No exercise data available for the selected period</p>
+            )}
+          </div>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
