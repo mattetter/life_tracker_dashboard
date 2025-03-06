@@ -1,6 +1,44 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import _ from 'lodash';
+import { initializeApp } from 'firebase/app';
+import StravaService from './StravaService';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  createUserWithEmailAndPassword,
+  onAuthStateChanged
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  addDoc, 
+  getDocs, 
+  query, 
+  orderBy, 
+  Timestamp,
+  setDoc,
+  getDoc,
+  deleteDoc,
+  onSnapshot
+} from 'firebase/firestore';
+
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBHKkBufXHXSRFilD058dp-HsPdboSCY5Q",
+  authDomain: "life-tracker-dashboard.firebaseapp.com",
+  projectId: "life-tracker-dashboard",
+  storageBucket: "life-tracker-dashboard.firebasestorage.app",
+  messagingSenderId: "503693529929",
+  appId: "1:503693529929:web:49f39138be913339ffc098"
+};
+
+// Initialize Firebase
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
 
 const LifeTrackerDashboard = () => {
   // Core state
@@ -10,6 +48,19 @@ const LifeTrackerDashboard = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [lastUpdated, setLastUpdated] = useState(null);
+  
+  // Projects state
+  const [projects, setProjects] = useState([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  
+  // Health metrics state
+  const [healthMetrics, setHealthMetrics] = useState([]);
+  const [isLoadingHealthMetrics, setIsLoadingHealthMetrics] = useState(false);
+  
+  // Auth state
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showSignUp, setShowSignUp] = useState(false);
   
   // Historical tracking state
   const [dateRange] = useState('all'); // Using 'all' as default to show all data
@@ -178,68 +229,70 @@ const LifeTrackerDashboard = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(5); // minutes
   
-  // Configuration for Google API
-  const API_KEY = 'AIzaSyDI1YqGyGQundRDM6Gh7wpKpeP9Ki1Lo7I'; // You'll need to add your API key
-  const CLIENT_ID = '230287780770-6cbb1fcm1tjco54ugku4kqn60d6sjbeu.apps.googleusercontent.com'; // You'll need to add your client ID
-  const SPREADSHEET_ID = '1u-R5YdC4_Q5k7-lLMkZrM3BijEg0SpyJWyIQw2XUe7Q'; // The ID from your Google Sheet URL
-  const SHEET_NAME = 'Form Responses 1'; // The name of your sheet
-  const DISCOVERY_DOCS = ["https://sheets.googleapis.com/$discovery/rest?version=v4"];
-  const SCOPES = "https://www.googleapis.com/auth/spreadsheets.readonly";
+  // Export state
+  const [isExporting, setIsExporting] = useState(false);
+  
+  // We'll implement a mock for Garmin Connect instead of using the node library
+  // which doesn't work well in browser environments
 
   // Save goals to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem('lifeTrackerGoals', JSON.stringify(goals));
-  }, [goals]);
-
-  // Initialize the Google API client with new Google Identity Services
-  useEffect(() => {
-    // For browser debugging
-    window.clearToken = () => {
-      localStorage.removeItem('gapi_token');
-      console.log("Token cleared from localStorage");
-    };
     
-    const loadGoogleAPI = async () => {
-      console.log("Starting Google API loading process");
-      
-      // First load the gapi.client for API calls
-      const gapiScript = document.createElement('script');
-      gapiScript.src = 'https://apis.google.com/js/api.js';
-      gapiScript.async = true;
-      gapiScript.defer = true;
-      document.body.appendChild(gapiScript);
-      
-      // Wait for gapi to load
-      await new Promise((resolve) => {
-        gapiScript.onload = () => {
-          console.log("GAPI script loaded");
-          resolve();
-        };
-      });
-      
-      // Now load the new Google Identity Services
-      const gisScript = document.createElement('script');
-      gisScript.src = 'https://accounts.google.com/gsi/client';
-      gisScript.async = true;
-      gisScript.defer = true;
-      document.body.appendChild(gisScript);
-      
-      gisScript.onload = () => {
-        console.log("GIS script loaded");
-        initClient();
-      };
-    };
+    // If authenticated, also save to Firestore
+    if (isAuthenticated && auth.currentUser) {
+      setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'goals'), { goals })
+        .catch(error => {
+          console.error("Error saving goals to Firestore:", error);
+        });
+    }
+  }, [goals, isAuthenticated]);
 
-    loadGoogleAPI();
+  // Check authentication state on component mount
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        console.log("User is signed in:", user.uid);
+        setIsAuthenticated(true);
+        fetchFirestoreData();
+        loadUserGoals(user.uid);
+      } else {
+        console.log("User is signed out");
+        setIsAuthenticated(false);
+        setData([]);
+      }
+    });
+    
+    // Cleanup subscription
+    return () => unsubscribe();
   }, []);
 
-  // Set up auto-refresh
+  // Load user goals from Firestore
+  const loadUserGoals = async (userId) => {
+    try {
+      const docSnap = await getDoc(doc(db, 'users', userId, 'settings', 'goals'));
+      
+      if (docSnap.exists() && docSnap.data().goals) {
+        setGoals(docSnap.data().goals);
+      } else {
+        // If no goals in Firestore, use current local goals and save them
+        setDoc(doc(db, 'users', userId, 'settings', 'goals'), { goals })
+          .catch(error => {
+            console.error("Error saving initial goals to Firestore:", error);
+          });
+      }
+    } catch (error) {
+      console.error("Error loading goals from Firestore:", error);
+    }
+  };
+
+  // Set up auto-refresh for Firestore data
   useEffect(() => {
     let intervalId;
     
     if (autoRefresh && isAuthenticated) {
       intervalId = setInterval(() => {
-        fetchSheetData();
+        fetchFirestoreData();
       }, refreshInterval * 60 * 1000); // Convert minutes to milliseconds
     }
     
@@ -248,223 +301,1315 @@ const LifeTrackerDashboard = () => {
     };
   }, [autoRefresh, refreshInterval, isAuthenticated]);
 
-  const initClient = async () => {
+  // Firebase authentication handlers
+  const handleSignIn = async (e) => {
+    e.preventDefault();
     setIsLoading(true);
+    
     try {
-      console.log("Initializing client...");
-      
-      // Initialize gapi.client
-      await new Promise((resolve, reject) => {
-        window.gapi.load('client', {
-          callback: () => {
-            console.log("GAPI client loaded");
-            resolve();
-          },
-          onerror: (err) => {
-            console.error("Error loading GAPI client:", err);
-            reject(err);
-          }
-        });
-      });
-      
-      // Initialize the client with API key and discoveryDocs
-      console.log("Initializing GAPI client with API key and discovery docs");
-      await window.gapi.client.init({
-        apiKey: API_KEY,
-        discoveryDocs: DISCOVERY_DOCS,
-      });
-      console.log("GAPI client initialized successfully");
-      
-      // Let's directly go for auth - don't try to restore from localStorage
-      // It seems that approach wasn't working correctly
-      
-      // Initialize Google Identity Services
-      console.log("Setting up token client");
-      window.tokenClient = window.google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: (tokenResponse) => {
-          console.log("Token client callback received", 
-                    tokenResponse.error ? "with error" : "successfully");
-          
-          if (tokenResponse.error) {
-            console.error("Auth error details:", tokenResponse);
-            setError('Error authenticating: ' + tokenResponse.error);
-            setIsAuthenticated(false);
-          } else {
-            console.log("Authentication successful");
-            setIsAuthenticated(true);
-            
-            // First check if we can load the Sheets API
-            if (window.gapi.client.getToken() && !window.gapi.client.sheets) {
-              console.log("Loading sheets API...");
-              window.gapi.client.load('sheets', 'v4')
-                .then(() => {
-                  console.log("Sheets API loaded, fetching data");
-                  fetchSheetData();
-                })
-                .catch(err => {
-                  console.error("Error loading sheets API:", err);
-                  setError('Error loading Google Sheets API: ' + err.message);
-                });
-            } else {
-              console.log("Sheets API already available, fetching data");
-              fetchSheetData();
-            }
-          }
-          setIsLoading(false);
-        }
-      });
-      
-      // Check if we're already signed in
-      console.log("Checking for existing authentication");
-      const hasToken = window.gapi.client.getToken() !== null;
-      console.log("Has existing token:", hasToken);
-      
-      if (hasToken) {
-        console.log("User is already authenticated");
-        setIsAuthenticated(true);
-        
-        // Make sure sheets API is loaded
-        if (!window.gapi.client.sheets) {
-          console.log("Loading sheets API for existing session...");
-          await window.gapi.client.load('sheets', 'v4');
-          console.log("Sheets API loaded for existing session");
-        }
-        
-        fetchSheetData();
-      } else {
-        console.log("No existing authentication, user will need to sign in");
-        setIsLoading(false);
-      }
+      await signInWithEmailAndPassword(auth, email, password);
+      setIsAuthenticated(true);
+      setError(null);
     } catch (error) {
-      console.error("Init client error:", error);
-      setError('Error initializing Google API client: ' + error.message);
+      console.error("Error signing in:", error);
+      setError(`Error signing in: ${error.message}`);
+    } finally {
       setIsLoading(false);
     }
   };
 
-  const handleAuthClick = () => {
-    if (window.gapi.client.getToken() !== null) {
-      // User is signed in, so sign out
-      window.google.accounts.oauth2.revoke(window.gapi.client.getToken().access_token, () => {
-        window.gapi.client.setToken(null);
-        localStorage.removeItem('gapi_token');
-        setIsAuthenticated(false);
-        setData([]);
-      });
-    } else {
-      // User is not signed in, so sign in
-      window.tokenClient.requestAccessToken();
-    }
-  };
-
-  const fetchSheetData = () => {
-    console.log("Fetching sheet data...");
+  const handleSignUp = async (e) => {
+    e.preventDefault();
     setIsLoading(true);
     
-    // Safety check
-    if (!window.gapi?.client?.getToken || !window.gapi?.client?.sheets) {
-      console.error("Cannot fetch data: Google API not properly initialized");
-      console.log("GAPI client state:", window.gapi?.client ? "exists" : "missing");
-      console.log("Sheets API state:", window.gapi?.client?.sheets ? "exists" : "missing");
-      console.log("GetToken function state:", window.gapi?.client?.getToken ? "exists" : "missing");
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      setIsAuthenticated(true);
+      setError(null);
       
-      setError('API initialization error: Please reload the page and reconnect');
+      // Initialize user settings in Firestore
+      await setDoc(doc(db, 'users', userCredential.user.uid, 'settings', 'goals'), { goals });
+    } catch (error) {
+      console.error("Error signing up:", error);
+      setError(`Error signing up: ${error.message}`);
+    } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      setIsAuthenticated(false);
+      setData([]);
+    } catch (error) {
+      console.error("Error signing out:", error);
+      setError(`Error signing out: ${error.message}`);
+    }
+  };
+
+  // Function to add a new daily log entry
+  const addDailyLog = async (logData) => {
+    if (!isAuthenticated || !auth.currentUser) {
+      setError('You must be signed in to add entries');
       return;
     }
     
-    // Token check
-    if (!window.gapi.client.getToken()) {
-      console.error("Cannot fetch data: No authentication token");
-      setError('Authentication required: Please connect to Google Sheets');
+    try {
+      setIsLoading(true);
+      
+      // Add timestamp and standardize data format
+      const newLog = {
+        ...logData,
+        timestamp: Timestamp.now(),
+        userId: auth.currentUser.uid,
+      };
+      
+      // Add the document to the logs collection
+      await addDoc(collection(db, 'users', auth.currentUser.uid, 'logs'), newLog);
+      
+      // Refresh data
+      fetchFirestoreData();
+    } catch (error) {
+      console.error("Error adding log entry:", error);
+      setError(`Error adding log: ${error.message}`);
+    } finally {
       setIsLoading(false);
+    }
+  };
+  
+  // Function to add a journal entry
+  const addJournalEntry = async (journalData) => {
+    if (!isAuthenticated || !auth.currentUser) {
+      setError('You must be signed in to add journal entries');
       return;
     }
     
-    console.log(`Requesting data from spreadsheet: ${SPREADSHEET_ID}, sheet: ${SHEET_NAME}`);
+    try {
+      setIsLoading(true);
+      
+      // Add timestamp and standardize data format
+      const newEntry = {
+        ...journalData,
+        timestamp: Timestamp.now(),
+        userId: auth.currentUser.uid,
+      };
+      
+      // Add the document to the journal collection
+      await addDoc(collection(db, 'users', auth.currentUser.uid, 'journal'), newEntry);
+      
+      // No need to refresh all data since journal entries are separate
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error("Error adding journal entry:", error);
+      setError(`Error adding journal: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Render Daily Log Tab
+  const renderDailyLogTab = () => {
+    return (
+      <div className="p-4">
+        <h2 className="text-2xl font-bold mb-6 text-gray-100">Daily Activity Log</h2>
+        <p className="mb-6 text-gray-400">
+          Track your daily activities and progress toward your goals.
+        </p>
+        <DailyLogForm />
+      </div>
+    );
+  };
+  
+  // Journal entries state (moved to component level)
+  const [journalEntries, setJournalEntries] = useState([]);
+  const [isLoadingJournal, setIsLoadingJournal] = useState(false);
+  
+  // Fetch journal entries from Firestore
+  const fetchJournalEntries = useCallback(async () => {
+    if (!isAuthenticated || !auth.currentUser) return;
     
-    window.gapi.client.sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:AZ` // This will fetch all columns
-    }).then(response => {
-      console.log("Received sheet data response");
+    setIsLoadingJournal(true);
+    try {
+      const q = query(
+        collection(db, 'users', auth.currentUser.uid, 'journal'),
+        orderBy('timestamp', 'desc')
+      );
       
-      const range = response.result;
-      if (range.values && range.values.length > 0) {
-        // Process the data - first row contains headers
-        const headers = range.values[0];
-        const rows = range.values.slice(1);
-        
-        console.log(`Successfully loaded ${rows.length} data rows from sheet`);
-        
-        // Convert to array of objects with proper keys
-        const processedData = rows.map(row => {
-          const obj = {};
-          headers.forEach((header, index) => {
-            // Make sure we have a value for this cell
-            if (index < row.length) {
-              obj[header] = row[index];
-            } else {
-              obj[header] = '';
-            }
-          });
-          
-          // Parse timestamp to Date object
-          const timestamp = new Date(obj.Timestamp);
-          obj.date = timestamp;
-          obj.formattedDate = `${timestamp.getMonth() + 1}/${timestamp.getDate()}/${timestamp.getFullYear()}`;
-          
-          // Extract year, month, week for better grouping
-          obj.year = timestamp.getFullYear();
-          obj.month = timestamp.getMonth() + 1;
-          obj.week = getWeekNumber(timestamp);
-          
-          // Convert Yes/No to boolean equivalents for calculations
-          Object.keys(obj).forEach(key => {
-            if (obj[key] === 'Yes') obj[key] = 'Yes';
-            else if (obj[key] === 'No') obj[key] = 'No';
-            else if (key !== 'Timestamp' && !isNaN(Number(obj[key]))) {
-              obj[key] = Number(obj[key]);
-            }
-          });
-          
-          return obj;
-        });
-        
-        // Sort by date
-        const sortedData = _.sortBy(processedData, 'date');
-        setData(sortedData);
-        setLastUpdated(new Date());
-        
-        // Clear any previous errors
-        setError(null);
-      } else {
-        console.warn("No data found in the sheet or empty response");
-        console.log("Response content:", range);
-        setError('No data found in the spreadsheet or invalid format.');
-      }
+      const querySnapshot = await getDocs(q);
+      const entries = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        date: doc.data().timestamp.toDate()
+      }));
+      
+      setJournalEntries(entries);
+    } catch (error) {
+      console.error("Error fetching journal entries:", error);
+    } finally {
+      setIsLoadingJournal(false);
+    }
+  }, [isAuthenticated, auth.currentUser]);
+  
+  // Load journal entries when tab changes to journal
+  useEffect(() => {
+    if (isAuthenticated && auth.currentUser && activeTab === 'journal') {
+      fetchJournalEntries();
+    }
+  }, [isAuthenticated, activeTab, fetchJournalEntries]);
+  
+  // Fetch projects from Firestore
+  const fetchProjects = useCallback(async () => {
+    if (!isAuthenticated || !auth.currentUser) return;
+    
+    setIsLoadingProjects(true);
+    try {
+      const q = query(
+        collection(db, 'users', auth.currentUser.uid, 'projects'),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const fetchedProjects = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        endDate: doc.data().endDate?.toDate() || null,
+        goals: doc.data().goals || []
+      }));
+      
+      setProjects(fetchedProjects);
+    } catch (error) {
+      console.error("Error fetching projects:", error);
+      setError(`Error fetching projects: ${error.message}`);
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }, [isAuthenticated]);
+  
+  // Fetch health metrics from Firestore
+  const fetchHealthMetrics = useCallback(async () => {
+    if (!isAuthenticated || !auth.currentUser) return;
+    
+    setIsLoadingHealthMetrics(true);
+    try {
+      const q = query(
+        collection(db, 'users', auth.currentUser.uid, 'healthMetrics'),
+        orderBy('date', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const fetchedMetrics = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        date: doc.data().date?.toDate() || new Date()
+      }));
+      
+      setHealthMetrics(fetchedMetrics);
+    } catch (error) {
+      console.error("Error fetching health metrics:", error);
+      setError(`Error fetching health metrics: ${error.message}`);
+    } finally {
+      setIsLoadingHealthMetrics(false);
+    }
+  }, [isAuthenticated]);
+  
+  // Add health metric
+  const addHealthMetric = async (metricData) => {
+    if (!isAuthenticated || !auth.currentUser) {
+      setError('You must be signed in to add health metrics');
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      
+      // Add timestamp and standardize data format
+      const newMetric = {
+        ...metricData,
+        date: Timestamp.now(),
+        userId: auth.currentUser.uid,
+      };
+      
+      // Add the document to the healthMetrics collection
+      await addDoc(collection(db, 'users', auth.currentUser.uid, 'healthMetrics'), newMetric);
+      
+      // Refresh health metrics
+      fetchHealthMetrics();
+    } catch (error) {
+      console.error("Error adding health metric:", error);
+      setError(`Error adding health metric: ${error.message}`);
+    } finally {
       setIsLoading(false);
-    }).catch(error => {
-      console.error("Sheet data fetch error:", error);
-      console.log("Error details:", JSON.stringify(error, null, 2));
+    }
+  };
+  
+  // Load projects when tab changes to overview
+  useEffect(() => {
+    if (isAuthenticated && auth.currentUser && activeTab === 'overview') {
+      fetchProjects();
+    }
+  }, [isAuthenticated, activeTab, fetchProjects]);
+  
+  // Fetch health metrics when health tab is active
+  useEffect(() => {
+    if (isAuthenticated && auth.currentUser && activeTab === 'health') {
+      fetchHealthMetrics();
+    }
+  }, [isAuthenticated, activeTab]);
+  
+  // Function to add a new project
+  const addProject = async (projectData) => {
+    if (!isAuthenticated || !auth.currentUser) {
+      setError('You must be signed in to add projects');
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
       
-      // Check if it's an authentication error
-      if (error.status === 401 || error.status === 403 || 
-          (error.result && error.result.error && 
-           (error.result.error.status === 'UNAUTHENTICATED' || 
-            error.result.error.status === 'PERMISSION_DENIED'))) {
-            
-        console.log("Authentication error detected, resetting auth state");
-        setIsAuthenticated(false);
-        setError('Authentication error: Please reconnect to Google Sheets');
-      } else {
-        setError('Error fetching sheet data: ' + (error.result?.error?.message || error.message || 'Unknown error'));
-      }
+      // Add timestamp and standardize data format
+      const newProject = {
+        ...projectData,
+        createdAt: Timestamp.now(),
+        userId: auth.currentUser.uid,
+        goals: projectData.goals || []
+      };
       
+      // Add the document to the projects collection
+      await addDoc(collection(db, 'users', auth.currentUser.uid, 'projects'), newProject);
+      
+      // Refresh projects
+      fetchProjects();
+    } catch (error) {
+      console.error("Error adding project:", error);
+      setError(`Error adding project: ${error.message}`);
+    } finally {
       setIsLoading(false);
+    }
+  };
+  
+  // Function to update a project
+  const updateProject = async (projectId, updatedData) => {
+    if (!isAuthenticated || !auth.currentUser) {
+      setError('You must be signed in to update projects');
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      
+      // Update the document in the projects collection
+      await setDoc(
+        doc(db, 'users', auth.currentUser.uid, 'projects', projectId), 
+        updatedData, 
+        { merge: true }
+      );
+      
+      // Refresh projects
+      fetchProjects();
+    } catch (error) {
+      console.error("Error updating project:", error);
+      setError(`Error updating project: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Function to delete a project
+  const deleteProject = async (projectId) => {
+    if (!isAuthenticated || !auth.currentUser) {
+      setError('You must be signed in to delete projects');
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      
+      // Delete the document from the projects collection
+      await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'projects', projectId));
+      
+      // Refresh projects
+      fetchProjects();
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      setError(`Error deleting project: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Journal Tab with form and entry list
+  const renderJournalTab = () => {
+    
+    return (
+      <div className="p-4">
+        <h2 className="text-2xl font-bold mb-6 text-gray-100">Journal</h2>
+        
+        {/* Journal entry form */}
+        <JournalEntryForm onSubmit={addJournalEntry} onSuccess={fetchJournalEntries} />
+        
+        {/* Journal entries list */}
+        <div className="mt-8">
+          <h3 className="text-xl font-semibold mb-4 text-gray-200">Previous Entries</h3>
+          
+          {isLoadingJournal ? (
+            <div className="text-center py-6">
+              <div className="inline-block h-6 w-6 animate-spin rounded-full border-4 border-solid border-blue-400 border-r-transparent"></div>
+              <p className="mt-2 text-gray-400">Loading journal entries...</p>
+            </div>
+          ) : journalEntries.length === 0 ? (
+            <p className="text-gray-400 py-4">No journal entries yet. Start journaling above!</p>
+          ) : (
+            <div className="space-y-6">
+              {journalEntries.map(entry => (
+                <div key={entry.id} className="bg-gray-800 p-5 rounded-lg shadow border border-gray-700">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm text-gray-400">
+                      {entry.date.toLocaleString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                    <span className="px-2 py-1 bg-blue-900 text-blue-200 text-xs rounded-full">
+                      {entry.journalType}
+                    </span>
+                  </div>
+                  
+                  {entry.title && (
+                    <h4 className="text-lg font-medium mb-2 text-gray-100">{entry.title}</h4>
+                  )}
+                  
+                  <div className="prose max-w-none text-gray-300">
+                    {entry.content.split('\n').map((paragraph, i) => (
+                      <p key={i} className="mb-2">{paragraph}</p>
+                    ))}
+                  </div>
+                  
+                  {entry.mood && (
+                    <div className="mt-3 text-sm text-gray-400">
+                      Energy Level: {entry.mood}/10
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+  
+  // Journal Entry Form component
+  const JournalEntryForm = ({ onSubmit, onSuccess }) => {
+    const [journalData, setJournalData] = useState({
+      title: '',
+      content: '',
+      mood: '5',
+      journalType: 'Daily'
     });
+    
+    const handleChange = (e) => {
+      const { name, value } = e.target;
+      setJournalData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    };
+    
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      await onSubmit(journalData);
+      
+      // Reset form
+      setJournalData({
+        title: '',
+        content: '',
+        mood: '5',
+        journalType: 'Daily'
+      });
+      
+      // Refresh entries
+      if (onSuccess) onSuccess();
+    };
+    
+    return (
+      <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
+        <h3 className="text-lg font-semibold mb-4 text-gray-100">New Journal Entry</h3>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label htmlFor="title" className="block text-sm font-medium mb-1 text-gray-300">
+              Title (Optional)
+            </label>
+            <input
+              type="text"
+              id="title"
+              name="title"
+              value={journalData.title}
+              onChange={handleChange}
+              className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400"
+              placeholder="What's on your mind today?"
+            />
+          </div>
+          
+          <div className="mb-4">
+            <label htmlFor="content" className="block text-sm font-medium mb-1 text-gray-300">
+              Journal Entry
+            </label>
+            <textarea
+              id="content"
+              name="content"
+              value={journalData.content}
+              onChange={handleChange}
+              className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400"
+              rows={6}
+              required
+              placeholder="Write your thoughts here..."
+            ></textarea>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label htmlFor="mood" className="block text-sm font-medium mb-1 text-gray-300">
+                Energy Level (0-10)
+              </label>
+              <select
+                id="mood"
+                name="mood"
+                value={journalData.mood}
+                onChange={handleChange}
+                className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+              >
+                <option value="0">0 - Completely Drained</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5 - Average</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+                <option value="10">10 - Fully Energized</option>
+              </select>
+            </div>
+            
+            <div>
+              <label htmlFor="journalType" className="block text-sm font-medium mb-1 text-gray-300">
+                Entry Type
+              </label>
+              <select
+                id="journalType"
+                name="journalType"
+                value={journalData.journalType}
+                onChange={handleChange}
+                className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+              >
+                <option value="Morning">Morning</option>
+                <option value="Evening">Evening</option>
+                <option value="Daily">Daily</option>
+                <option value="Gratitude">Gratitude</option>
+                <option value="Reflection">Reflection</option>
+              </select>
+            </div>
+          </div>
+          
+          <button
+            type="submit"
+            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md"
+            disabled={isLoading}
+          >
+            {isLoading ? "Saving..." : "Save Journal Entry"}
+          </button>
+        </form>
+      </div>
+    );
+  };
+  
+  // New component for creating a daily log entry
+  const DailyLogForm = () => {
+    // Default form state with common fields
+    const [formData, setFormData] = useState({
+      // Basic Fields
+      // Social Fields
+      talked_on_phone_friend: "No",
+      talked_on_phone_family: "No",
+      talked_on_phone_new: "No",
+      texted_friend: "No",
+      texted_family: "No",
+      texted_new: "No",
+      made_plans_friend: "No",
+      made_plans_family: "No",
+      made_plans_new: "No",
+      hung_out_friend: "No",
+      hung_out_family: "No",
+      hung_out_new: "No",
+      kat_smile: "No",
+      kat_nice: "No",
+      kat_review: "No",
+      kat_meaningful: "No",
+      
+      // Wellbeing Fields
+      morning_journal: "No",
+      evening_journal: "No",
+      meditation: "No",
+      epic_activity: "No",
+      epic_rating: 3,
+      vibes: 5,
+      
+      // Productivity Fields
+      focused_time: "0",
+      reading_time: "0",
+      internet_time: "0",
+      
+      // Health Fields
+      cardio: "No",
+      strength: "No",
+      bed_on_time: "No",
+      up_on_time: "No",
+      
+      // Numeric Fields
+      pushups: 0,
+      rows: 0,
+      situps: 0,
+      squats: 0,
+      miles: 0
+    });
+    
+    // State for tracking if sections are expanded
+    const [expandedSections, setExpandedSections] = useState({
+      talked_on_phone: false,
+      texted: false,
+      made_plans: false,
+      hung_out: false,
+      kat: false
+    });
+    
+    const handleChange = (e) => {
+      const { name, value, type, checked } = e.target;
+      setFormData(prev => ({
+        ...prev,
+        [name]: type === 'checkbox' ? (checked ? "Yes" : "No") : value
+      }));
+    };
+    
+    const handleExpandSection = (section) => {
+      setExpandedSections(prev => ({
+        ...prev,
+        [section]: !prev[section]
+      }));
+    };
+    
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      await addDailyLog(formData);
+      // Reset form after submission
+      setFormData({
+        // Social Fields
+        talked_on_phone_friend: "No",
+        talked_on_phone_family: "No",
+        talked_on_phone_new: "No",
+        texted_friend: "No",
+        texted_family: "No",
+        texted_new: "No",
+        made_plans_friend: "No",
+        made_plans_family: "No",
+        made_plans_new: "No",
+        hung_out_friend: "No",
+        hung_out_family: "No",
+        hung_out_new: "No",
+        kat_smile: "No",
+        kat_nice: "No",
+        kat_review: "No",
+        kat_meaningful: "No",
+        
+        // Wellbeing Fields
+        morning_journal: "No",
+        evening_journal: "No",
+        meditation: "No",
+        epic_activity: "No",
+        epic_rating: 3,
+        vibes: 5,
+        
+        // Productivity Fields
+        focused_time: "0",
+        reading_time: "0",
+        internet_time: "0",
+        
+        // Health Fields
+        cardio: "No",
+        strength: "No",
+        bed_on_time: "No",
+        up_on_time: "No",
+        
+        // Numeric Fields
+        pushups: 0,
+        rows: 0,
+        situps: 0,
+        squats: 0,
+        miles: 0
+      });
+      
+      // Reset expanded sections
+      setExpandedSections({
+        talked_on_phone: false,
+        texted: false,
+        made_plans: false,
+        hung_out: false,
+        kat: false
+      });
+    };
+    
+    return (
+      <div className="bg-gray-800 p-6 rounded-lg shadow-md mb-6 border border-gray-700">
+        <h3 className="text-xl font-semibold mb-4 text-gray-100">Add Daily Log Entry</h3>
+        <form onSubmit={handleSubmit}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Social Section */}
+            <div className="bg-blue-900 p-4 rounded-md border border-blue-800">
+              <h4 className="font-medium text-blue-100 mb-3">Social</h4>
+              
+              <div className="space-y-4">
+                {/* Talked on the phone category */}
+                <div className="border-b border-blue-800 pb-2">
+                  <button 
+                    type="button"
+                    onClick={() => handleExpandSection('talked_on_phone')}
+                    className="flex items-center justify-between w-full text-left text-gray-200 hover:text-white focus:outline-none"
+                  >
+                    <span>Talked on the phone with:</span>
+                    <span className="text-lg">{expandedSections.talked_on_phone ? '−' : '+'}</span>
+                  </button>
+                  
+                  {expandedSections.talked_on_phone && (
+                    <div className="mt-2 ml-4 space-y-2">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="talked_on_phone_friend"
+                          name="talked_on_phone_friend"
+                          checked={formData.talked_on_phone_friend === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="talked_on_phone_friend" className="text-gray-200">Friend</label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="talked_on_phone_family"
+                          name="talked_on_phone_family"
+                          checked={formData.talked_on_phone_family === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="talked_on_phone_family" className="text-gray-200">Family</label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="talked_on_phone_new"
+                          name="talked_on_phone_new"
+                          checked={formData.talked_on_phone_new === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="talked_on_phone_new" className="text-gray-200">Someone new</label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Texted category */}
+                <div className="border-b border-blue-800 pb-2">
+                  <button 
+                    type="button"
+                    onClick={() => handleExpandSection('texted')}
+                    className="flex items-center justify-between w-full text-left text-gray-200 hover:text-white focus:outline-none"
+                  >
+                    <span>Texted with:</span>
+                    <span className="text-lg">{expandedSections.texted ? '−' : '+'}</span>
+                  </button>
+                  
+                  {expandedSections.texted && (
+                    <div className="mt-2 ml-4 space-y-2">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="texted_friend"
+                          name="texted_friend"
+                          checked={formData.texted_friend === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="texted_friend" className="text-gray-200">Friend</label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="texted_family"
+                          name="texted_family"
+                          checked={formData.texted_family === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="texted_family" className="text-gray-200">Family</label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="texted_new"
+                          name="texted_new"
+                          checked={formData.texted_new === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="texted_new" className="text-gray-200">Someone new</label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Made plans category */}
+                <div className="border-b border-blue-800 pb-2">
+                  <button 
+                    type="button"
+                    onClick={() => handleExpandSection('made_plans')}
+                    className="flex items-center justify-between w-full text-left text-gray-200 hover:text-white focus:outline-none"
+                  >
+                    <span>Made plans with:</span>
+                    <span className="text-lg">{expandedSections.made_plans ? '−' : '+'}</span>
+                  </button>
+                  
+                  {expandedSections.made_plans && (
+                    <div className="mt-2 ml-4 space-y-2">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="made_plans_friend"
+                          name="made_plans_friend"
+                          checked={formData.made_plans_friend === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="made_plans_friend" className="text-gray-200">Friend</label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="made_plans_family"
+                          name="made_plans_family"
+                          checked={formData.made_plans_family === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="made_plans_family" className="text-gray-200">Family</label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="made_plans_new"
+                          name="made_plans_new"
+                          checked={formData.made_plans_new === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="made_plans_new" className="text-gray-200">Someone new</label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Hung out category */}
+                <div className="border-b border-blue-800 pb-2">
+                  <button 
+                    type="button"
+                    onClick={() => handleExpandSection('hung_out')}
+                    className="flex items-center justify-between w-full text-left text-gray-200 hover:text-white focus:outline-none"
+                  >
+                    <span>Hung out with:</span>
+                    <span className="text-lg">{expandedSections.hung_out ? '−' : '+'}</span>
+                  </button>
+                  
+                  {expandedSections.hung_out && (
+                    <div className="mt-2 ml-4 space-y-2">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="hung_out_friend"
+                          name="hung_out_friend"
+                          checked={formData.hung_out_friend === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="hung_out_friend" className="text-gray-200">Friend</label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="hung_out_family"
+                          name="hung_out_family"
+                          checked={formData.hung_out_family === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="hung_out_family" className="text-gray-200">Family</label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="hung_out_new"
+                          name="hung_out_new"
+                          checked={formData.hung_out_new === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="hung_out_new" className="text-gray-200">Someone new</label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Kat category */}
+                <div className="border-b border-blue-800 pb-2">
+                  <button 
+                    type="button"
+                    onClick={() => handleExpandSection('kat')}
+                    className="flex items-center justify-between w-full text-left text-gray-200 hover:text-white focus:outline-none"
+                  >
+                    <span>Kat:</span>
+                    <span className="text-lg">{expandedSections.kat ? '−' : '+'}</span>
+                  </button>
+                  
+                  {expandedSections.kat && (
+                    <div className="mt-2 ml-4 space-y-2">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="kat_smile"
+                          name="kat_smile"
+                          checked={formData.kat_smile === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="kat_smile" className="text-gray-200">Made her smile</label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="kat_nice"
+                          name="kat_nice"
+                          checked={formData.kat_nice === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="kat_nice" className="text-gray-200">Did something nice for her</label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="kat_meaningful"
+                          name="kat_meaningful"
+                          checked={formData.kat_meaningful === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="kat_meaningful" className="text-gray-200">Hung out meaningfully</label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="kat_review"
+                          name="kat_review"
+                          checked={formData.kat_review === "Yes"}
+                          onChange={handleChange}
+                          className="mr-2"
+                        />
+                        <label htmlFor="kat_review" className="text-gray-200">Did review with her</label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Wellbeing Section */}
+            <div className="bg-purple-900 p-4 rounded-md border border-purple-800">
+              <h4 className="font-medium text-purple-100 mb-3">Wellbeing</h4>
+              
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="vibes" className="block mb-1 text-gray-200">Overall Vibes (0-10)</label>
+                  <select
+                    id="vibes"
+                    name="vibes"
+                    value={formData.vibes}
+                    onChange={handleChange}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                  >
+                    <option value="0">0 - Terrible</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5 - Average</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10 - Amazing</option>
+                  </select>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="morning_journal"
+                    name="morning_journal"
+                    checked={formData.morning_journal === "Yes"}
+                    onChange={handleChange}
+                    className="mr-2"
+                  />
+                  <label htmlFor="morning_journal" className="text-gray-200">Morning Journal</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="evening_journal"
+                    name="evening_journal"
+                    checked={formData.evening_journal === "Yes"}
+                    onChange={handleChange}
+                    className="mr-2"
+                  />
+                  <label htmlFor="evening_journal" className="text-gray-200">Evening Journal</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="meditation"
+                    name="meditation"
+                    checked={formData.meditation === "Yes"}
+                    onChange={handleChange}
+                    className="mr-2"
+                  />
+                  <label htmlFor="meditation" className="text-gray-200">Meditation/Prayer</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="epic_activity"
+                    name="epic_activity"
+                    checked={formData.epic_activity === "Yes"}
+                    onChange={handleChange}
+                    className="mr-2"
+                  />
+                  <label htmlFor="epic_activity" className="text-gray-200">Did something epic</label>
+                </div>
+                
+                {formData.epic_activity === "Yes" && (
+                  <div>
+                    <label htmlFor="epic_rating" className="block mb-1 text-gray-200">How epic? (1-5)</label>
+                    <select
+                      id="epic_rating"
+                      name="epic_rating"
+                      value={formData.epic_rating}
+                      onChange={handleChange}
+                      className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                    >
+                      <option value="1">1 - Somewhat epic</option>
+                      <option value="2">2</option>
+                      <option value="3">3 - Pretty epic</option>
+                      <option value="4">4</option>
+                      <option value="5">5 - Legendary</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Health Section */}
+            <div className="bg-green-900 p-4 rounded-md border border-green-800">
+              <h4 className="font-medium text-green-100 mb-3">Health</h4>
+              
+              <div className="space-y-3">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="cardio"
+                    name="cardio"
+                    checked={formData.cardio === "Yes"}
+                    onChange={handleChange}
+                    className="mr-2"
+                  />
+                  <label htmlFor="cardio" className="text-gray-200">Did cardio today</label>
+                </div>
+                
+                {formData.cardio === "Yes" && (
+                  <div>
+                    <label htmlFor="miles" className="block mb-1 text-gray-200">Miles</label>
+                    <input
+                      type="number"
+                      id="miles"
+                      name="miles"
+                      step="0.1"
+                      min="0"
+                      value={formData.miles}
+                      onChange={handleChange}
+                      className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                    />
+                  </div>
+                )}
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="strength"
+                    name="strength"
+                    checked={formData.strength === "Yes"}
+                    onChange={handleChange}
+                    className="mr-2"
+                  />
+                  <label htmlFor="strength" className="text-gray-200">Did strength training</label>
+                </div>
+                
+                {formData.strength === "Yes" && (
+                  <div className="space-y-2">
+                    <div>
+                      <label htmlFor="pushups" className="block mb-1 text-gray-200">Pushups</label>
+                      <input
+                        type="number"
+                        id="pushups"
+                        name="pushups"
+                        min="0"
+                        value={formData.pushups}
+                        onChange={handleChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="rows" className="block mb-1 text-gray-200">Rows</label>
+                      <input
+                        type="number"
+                        id="rows"
+                        name="rows"
+                        min="0"
+                        value={formData.rows}
+                        onChange={handleChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="situps" className="block mb-1 text-gray-200">Situps</label>
+                      <input
+                        type="number"
+                        id="situps"
+                        name="situps"
+                        min="0"
+                        value={formData.situps}
+                        onChange={handleChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label htmlFor="squats" className="block mb-1 text-gray-200">Squats</label>
+                      <input
+                        type="number"
+                        id="squats"
+                        name="squats"
+                        min="0"
+                        value={formData.squats}
+                        onChange={handleChange}
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                      />
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="bed_on_time"
+                    name="bed_on_time"
+                    checked={formData.bed_on_time === "Yes"}
+                    onChange={handleChange}
+                    className="mr-2"
+                  />
+                  <label htmlFor="bed_on_time" className="text-gray-200">Bed on time</label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="up_on_time"
+                    name="up_on_time"
+                    checked={formData.up_on_time === "Yes"}
+                    onChange={handleChange}
+                    className="mr-2"
+                  />
+                  <label htmlFor="up_on_time" className="text-gray-200">Up on time</label>
+                </div>
+              </div>
+            </div>
+            
+            {/* Productivity Section */}
+            <div className="bg-amber-900 p-4 rounded-md border border-amber-800">
+              <h4 className="font-medium text-amber-100 mb-3">Productivity</h4>
+              
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="focused_time" className="block mb-1 text-gray-200">Focused Productive Time</label>
+                  <select
+                    id="focused_time"
+                    name="focused_time"
+                    value={formData.focused_time}
+                    onChange={handleChange}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                  >
+                    <option value="0">None</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="45">45 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="90">1.5 hours</option>
+                    <option value="120">2 hours</option>
+                    <option value="180">3 hours</option>
+                    <option value="240">4 hours</option>
+                    <option value="300">5 hours</option>
+                    <option value="360">6+ hours</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label htmlFor="reading_time" className="block mb-1 text-gray-200">Reading Time</label>
+                  <select
+                    id="reading_time"
+                    name="reading_time"
+                    value={formData.reading_time}
+                    onChange={handleChange}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                  >
+                    <option value="0">None</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="45">45 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="90">1.5 hours</option>
+                    <option value="120">2 hours</option>
+                    <option value="180">3+ hours</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label htmlFor="internet_time" className="block mb-1 text-gray-200">Mindless Internet Use</label>
+                  <select
+                    id="internet_time"
+                    name="internet_time"
+                    value={formData.internet_time}
+                    onChange={handleChange}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                  >
+                    <option value="0">None</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="45">45 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="90">1.5 hours</option>
+                    <option value="120">2 hours</option>
+                    <option value="180">3 hours</option>
+                    <option value="240">4+ hours</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-6 text-center">
+            <button 
+              type="submit" 
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              disabled={isLoading}
+            >
+              {isLoading ? "Saving..." : "Save Daily Log"}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  };
+
+  // Fetch data from Firestore
+  const fetchFirestoreData = async () => {
+    if (!isAuthenticated || !auth.currentUser) {
+      console.log("User authentication status:", isAuthenticated ? "Authenticated but no user" : "Not authenticated");
+      console.log("Current auth state:", auth.currentUser ? "User present" : "No user");
+      // Set empty data instead of returning
+      setData([]);
+      setLastUpdated(new Date());
+      return;
+    }
+    
+    console.log("Fetching data for authenticated user:", auth.currentUser.uid);
+    
+    setIsLoading(true);
+    
+    try {
+      // Query logs collection, ordered by timestamp
+      const q = query(
+        collection(db, 'users', auth.currentUser.uid, 'logs'),
+        orderBy('timestamp', 'asc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      // Process the data
+      const processedData = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        const timestamp = data.timestamp.toDate();
+        
+        return {
+          id: doc.id,
+          ...data,
+          date: timestamp,
+          formattedDate: `${timestamp.getMonth() + 1}/${timestamp.getDate()}/${timestamp.getFullYear()}`,
+          year: timestamp.getFullYear(),
+          month: timestamp.getMonth() + 1,
+          week: getWeekNumber(timestamp),
+        };
+      });
+      
+      // Sort by date
+      const sortedData = _.sortBy(processedData, 'date');
+      setData(sortedData);
+      setLastUpdated(new Date());
+      setError(null);
+    } catch (error) {
+      console.error("Error fetching data from Firestore:", error);
+      setError(`Error fetching data: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Helper function to get week number
@@ -883,6 +2028,36 @@ const LifeTrackerDashboard = () => {
 
   // Compile all metrics for overview
   const getAllMetrics = useCallback(() => {
+    // If no data, return default empty metrics
+    if (!data || data.length === 0) {
+      return {
+        social: {
+          family: { rate: 0, daysCount: 0, target: 0, progress: 0 },
+          friends: { rate: 0, daysCount: 0, target: 0, progress: 0 },
+          kat: { smile: { rate: 0, progress: 0 }, review: { count: 0, target: 0, progress: 0 } },
+          newConnections: { phoneNumbers: { count: 0, target: 0, progress: 0 }, hangouts: { count: 0, target: 0, progress: 0 } },
+          vibes: { average: 0, count: 0 }
+        },
+        wellbeing: {
+          journaling: { morningRate: 0, eveningRate: 0, bothRate: 0, totalRate: 0, progress: 0 },
+          meditation: { rate: 0, daysCount: 0, progress: 0 },
+          epic: { count: 0, target: 0, progress: 0 }
+        },
+        health: {
+          strength: { total: 0, pushups: 0, rows: 0, situps: 0, squats: 0, progress: 0 },
+          sleep: { bedOnTime: { rate: 0, progress: 0 }, upOnTime: { rate: 0 }, overall: { rate: 0 } },
+          cardio: { rate: 0, count: 0, totalMiles: 0, averageMiles: 0 }
+        },
+        productivity: {
+          language: { rate: 0, progress: 0 },
+          math: { rate: 0, progress: 0 },
+          code: { rate: 0, progress: 0 },
+          lessons: { count: 0, target: 0, progress: 0 }
+        }
+      };
+    }
+
+    // Otherwise calculate metrics from data
     return {
       social: {
         family: calculateFamilyContactRate(),
@@ -1164,12 +2339,12 @@ const LifeTrackerDashboard = () => {
     return (
       <div className="mb-4">
         <div className="flex justify-between mb-1">
-          <span className="text-sm font-medium">{label}</span>
-          <span className="text-sm font-medium">{Math.round(safeValue)}%</span>
+          <span className="text-sm font-medium text-gray-200">{label}</span>
+          <span className="text-sm font-medium text-gray-200">{Math.round(safeValue)}%</span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2.5">
+        <div className="w-full bg-gray-700 rounded-full h-2.5">
           <div 
-            className={`h-2.5 rounded-full ${progress >= 100 ? 'bg-green-600' : progress >= 70 ? 'bg-blue-600' : progress >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+            className={`h-2.5 rounded-full ${progress >= 100 ? 'bg-green-500' : progress >= 70 ? 'bg-blue-500' : progress >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} 
             style={{ width: `${progress}%` }}
           ></div>
         </div>
@@ -1183,18 +2358,18 @@ const LifeTrackerDashboard = () => {
   
   const renderDashboardFooter = () => {
     return (
-      <div className="mt-6 bg-white rounded-lg p-4 shadow border border-gray-200">
+      <div className="mt-6 bg-gray-800 rounded-lg p-4 shadow border border-gray-700">
         <div className="flex justify-between items-center">
           <div>
             {lastUpdated && (
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-gray-400">
                 Last updated: {lastUpdated.toLocaleString()}
               </div>
             )}
           </div>
           <button
             onClick={() => setShowGoalSettings(!showGoalSettings)}
-            className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
+            className="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-200"
           >
             {showGoalSettings ? 'Hide Goal Settings' : 'Customize Goals'}
           </button>
@@ -1217,6 +2392,15 @@ const LifeTrackerDashboard = () => {
     setGoals(prevGoals => {
       const updatedGoals = { ...prevGoals };
       updatedGoals[category][goalKey].targetDate = newDate;
+      return updatedGoals;
+    });
+  };
+  
+  // Helper to update goal description
+  const updateGoalDescription = (category, goalKey, newDescription) => {
+    setGoals(prevGoals => {
+      const updatedGoals = { ...prevGoals };
+      updatedGoals[category][goalKey].description = newDescription;
       return updatedGoals;
     });
   };
@@ -1246,12 +2430,12 @@ const LifeTrackerDashboard = () => {
     });
     
     return (
-      <div className="mb-6 bg-white rounded-lg p-4 shadow border border-gray-200">
+      <div className="mb-6 bg-gray-800 rounded-lg p-4 shadow border border-gray-700">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-semibold">Customize Your Goals</h3>
+          <h3 className="text-xl font-semibold text-gray-100">Customize Your Goals</h3>
           <button
             onClick={() => setShowGoalSettings(false)}
-            className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm"
+            className="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 text-sm text-gray-200"
           >
             Close
           </button>
@@ -1260,16 +2444,28 @@ const LifeTrackerDashboard = () => {
         {/* Display goals by their category */}
         {Object.entries(categorizedGoals).map(([category, categoryGoals]) => (
           <div key={category} className="mb-8">
-            <h4 className="font-medium text-lg mb-4 pb-2 border-b">{category}</h4>
+            <h4 className="font-medium text-lg mb-4 pb-2 border-b border-gray-700 text-gray-200">{category}</h4>
             
             <div className="space-y-4">
               {categoryGoals.map(goal => (
-                <div key={goal.id} className="p-3 border rounded bg-gray-50">
-                  <div className="font-medium mb-2">{goal.description}</div>
+                <div key={goal.id} className="p-3 border border-gray-700 rounded bg-gray-700">
+                  <div className="mb-4">
+                    <label className="block text-sm mb-1 text-gray-300">Goal Description</label>
+                    <input
+                      type="text"
+                      value={goal.description}
+                      onChange={(e) => updateGoalDescription(
+                        goal.mainType,
+                        goal.id,
+                        e.target.value
+                      )}
+                      className="w-full px-3 py-2 bg-gray-600 border border-gray-600 rounded text-white"
+                    />
+                  </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm mb-1">Target Value</label>
+                      <label className="block text-sm mb-1 text-gray-300">Target Value</label>
                       <input 
                         type="number" 
                         value={goal.value} 
@@ -1278,7 +2474,7 @@ const LifeTrackerDashboard = () => {
                           goal.id, 
                           Number(e.target.value)
                         )}
-                        className="w-full px-3 py-2 border rounded"
+                        className="w-full px-3 py-2 bg-gray-600 border border-gray-600 rounded text-white"
                         min="0"
                         step={goal.id.includes("Percentage") ? "5" : "1"}
                       />
@@ -1286,7 +2482,7 @@ const LifeTrackerDashboard = () => {
                     
                     {goal.targetDate !== "rolling" && (
                       <div>
-                        <label className="block text-sm mb-1">Target Date</label>
+                        <label className="block text-sm mb-1 text-gray-300">Target Date</label>
                         <input 
                           type="date" 
                           value={goal.targetDate ? goal.targetDate.split('T')[0] : ""}
@@ -1295,7 +2491,7 @@ const LifeTrackerDashboard = () => {
                             goal.id, 
                             e.target.value
                           )}
-                          className="w-full px-3 py-2 border rounded"
+                          className="w-full px-3 py-2 bg-gray-600 border border-gray-600 rounded text-white"
                         />
                       </div>
                     )}
@@ -1307,10 +2503,10 @@ const LifeTrackerDashboard = () => {
         ))}
         
         {/* Auto-refresh settings */}
-        <div className="mt-6 p-4 bg-gray-100 rounded">
-          <h4 className="font-medium mb-3">Auto-Refresh Settings</h4>
+        <div className="mt-6 p-4 bg-gray-700 rounded border border-gray-600">
+          <h4 className="font-medium mb-3 text-gray-200">Auto-Refresh Settings</h4>
           <div className="flex items-center space-x-4">
-            <label className="flex items-center">
+            <label className="flex items-center text-gray-300">
               <input 
                 type="checkbox" 
                 checked={autoRefresh} 
@@ -1321,13 +2517,13 @@ const LifeTrackerDashboard = () => {
             </label>
             
             {autoRefresh && (
-              <div className="flex items-center">
+              <div className="flex items-center text-gray-300">
                 <span className="mr-2">Refresh every</span>
                 <input 
                   type="number" 
                   value={refreshInterval} 
                   onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                  className="w-16 px-2 py-1 border rounded"
+                  className="w-16 px-2 py-1 bg-gray-600 border border-gray-600 rounded text-white"
                   min="1"
                   max="60"
                 />
@@ -1345,8 +2541,8 @@ const LifeTrackerDashboard = () => {
     
     if (historicalData.length <= 1) {
       return (
-        <div className="bg-white p-4 rounded-lg shadow text-center">
-          <p>Not enough data for historical view</p>
+        <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 text-center">
+          <p className="text-gray-300">Not enough data for historical view</p>
         </div>
       );
     }
@@ -1365,8 +2561,8 @@ const LifeTrackerDashboard = () => {
     };
     
     return (
-      <div className="bg-white p-4 rounded-lg shadow">
-        <h3 className="text-lg font-semibold mb-4">{title}</h3>
+      <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+        <h3 className="text-lg font-semibold mb-4 text-gray-200">{title}</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={historicalData} margin={{ top: 5, right: 20, bottom: 30, left: 0 }}>
@@ -1376,28 +2572,30 @@ const LifeTrackerDashboard = () => {
                   <stop offset="95%" stopColor={color} stopOpacity={0.2}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
               <XAxis 
                 dataKey="period" 
                 tickFormatter={formatXAxis} 
-                tick={{ fontSize: 12, fill: '#666' }}
+                tick={{ fontSize: 12, fill: '#bbb' }}
                 angle={-45}
                 textAnchor="end"
                 height={50}
               />
               <YAxis 
                 domain={[0, 100]} 
-                tick={{ fontSize: 12, fill: '#666' }}
+                tick={{ fontSize: 12, fill: '#bbb' }}
                 tickFormatter={(value) => `${value}%`}
               />
               <Tooltip 
                 formatter={(value) => [`${Math.round(value)}%`, title]} 
                 labelFormatter={formatXAxis}
                 contentStyle={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                  backgroundColor: 'rgba(45, 55, 72, 0.9)',
                   borderRadius: '5px',
                   padding: '10px',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.15)'
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                  color: '#ddd',
+                  border: '1px solid #555'
                 }}
               />
               <Area 
@@ -1418,89 +2616,12 @@ const LifeTrackerDashboard = () => {
     );
   };
 
-  // New component for rendering a goal progress bar
-  const GoalProgressBar = ({ goal }) => {
-    // Handle different types of goals
-    const isRolling = goal.isRolling;
-    const progress = goal.progress || 0;
-    
-    // Format date if available
-    const formatDate = (date) => {
-      if (!date) return 'N/A';
-      return new Date(date).toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric' 
-      });
-    };
-    
-    return (
-      <div className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm mb-3">
-        <div className="flex justify-between items-start mb-2">
-          <h4 className="text-md font-medium">{goal.description}</h4>
-          <div className="text-sm text-right">
-            {!isRolling && (
-              <div className={`font-bold ${goal.isOnTrack ? 'text-green-600' : 'text-red-500'}`}>
-                {goal.isOnTrack ? 'On Track' : 'Off Track'}
-              </div>
-            )}
-          </div>
-        </div>
-        
-        <div className="mb-2">
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-sm">
-              Current: {goal.currentValue !== undefined ? Math.round(goal.currentValue) : '?'}
-            </span>
-            <span className="text-sm">
-              Target: {goal.targetValue}
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2.5">
-            <div 
-              className={`h-2.5 rounded-full ${
-                progress >= 100 ? 'bg-green-500' : 
-                progress >= 75 ? 'bg-blue-500' : 
-                progress >= 50 ? 'bg-yellow-500' : 
-                progress >= 25 ? 'bg-orange-500' : 
-                'bg-red-500'
-              }`} 
-              style={{ width: `${Math.min(100, progress)}%` }}
-            ></div>
-          </div>
-        </div>
-        
-        {!isRolling && (
-          <div className="text-xs text-gray-600 mt-1">
-            <div className="flex justify-between">
-              <span>Target date: {formatDate(goal.targetDate)}</span>
-              <span>{Math.round(goal.daysUntilTarget)} days left</span>
-            </div>
-            {goal.projectedCompletion && (
-              <div className="flex justify-between mt-1">
-                <span>Projected completion: </span>
-                <span className={goal.isOnTrack ? "text-green-600" : "text-red-500"}>
-                  {formatDate(goal.projectedCompletion)}
-                </span>
-              </div>
-            )}
-            {goal.rateOfProgress > 0 && (
-              <div className="mt-1">
-                Current rate: {goal.rateOfProgress.toFixed(2)} per day
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // New component for a category of goals
+  // Goal Category component
   const GoalCategory = ({ title, goals }) => {
     return (
-      <div className="mb-8">
-        <h3 className="text-xl font-semibold mb-4 border-b pb-2">{title}</h3>
-        <div>
+      <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
+        <h3 className="text-lg font-semibold mb-4 text-gray-200">{title}</h3>
+        <div className="space-y-4">
           {goals.map(goal => (
             <GoalProgressBar key={goal.id} goal={goal} />
           ))}
@@ -1508,207 +2629,428 @@ const LifeTrackerDashboard = () => {
       </div>
     );
   };
-
-  const renderOverview = () => {
-    const metrics = getAllMetrics();
-    
-    // Calculate average progress for each area
-    const calculateAreaProgress = (area) => {
-      let progress = 0;
-      let count = 0;
-      
-      if (area === 'social') {
-        progress += safeGet(metrics, 'social.family.progress', 0);
-        progress += safeGet(metrics, 'social.friends.progress', 0);
-        progress += safeGet(metrics, 'social.kat.smile.progress', 0);
-        progress += safeGet(metrics, 'social.kat.review.progress', 0);
-        progress += safeGet(metrics, 'social.newConnections.phoneNumbers.progress', 0);
-        progress += safeGet(metrics, 'social.newConnections.hangouts.progress', 0);
-        count = 6;
-      } else if (area === 'wellbeing') {
-        progress += safeGet(metrics, 'wellbeing.journaling.progress', 0);
-        progress += safeGet(metrics, 'wellbeing.meditation.progress', 0);
-        progress += safeGet(metrics, 'wellbeing.epic.progress', 0);
-        count = 3;
-      } else if (area === 'health') {
-        progress += safeGet(metrics, 'health.strength.progress', 0);
-        progress += safeGet(metrics, 'health.sleep.bedOnTime.progress', 0);
-        count = 2;
-      } else if (area === 'productivity') {
-        progress += safeGet(metrics, 'productivity.language.progress', 0);
-        progress += safeGet(metrics, 'productivity.math.progress', 0);
-        progress += safeGet(metrics, 'productivity.code.progress', 0);
-        progress += safeGet(metrics, 'productivity.lessons.progress', 0);
-        count = 4;
-      }
-      
-      return count > 0 ? progress / count : 0;
-    };
-    
-    const socialProgress = calculateAreaProgress('social');
-    const wellbeingProgress = calculateAreaProgress('wellbeing');
-    const healthProgress = calculateAreaProgress('health');
-    const productivityProgress = calculateAreaProgress('productivity');
-    
+  
+  // Render Strava Tab
+  const renderStravaTab = () => {
     return (
       <div className="p-4">
-        <h2 className="text-2xl font-bold mb-6">Life Balance Dashboard</h2>
+        <h2 className="text-2xl font-bold mb-6 text-gray-100">Strava Integration</h2>
         
-        {/* Progress bars for each life area */}
-        <div className="bg-white rounded-lg p-4 shadow-sm mb-6">
-          <h3 className="text-lg font-semibold mb-4">Life Areas Progress</h3>
-          
-          <div className="space-y-5">
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="font-medium">Social</span>
-                <span>{Math.round(socialProgress)}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
-                <div 
-                  className="h-3 rounded-full" 
-                  style={{ 
-                    width: `${Math.min(100, socialProgress)}%`,
-                    backgroundColor: '#3B82F6' // blue-500
-                  }}
-                ></div>
-              </div>
-            </div>
-            
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="font-medium">Wellbeing</span>
-                <span>{Math.round(wellbeingProgress)}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
-                <div 
-                  className="h-3 rounded-full" 
-                  style={{ 
-                    width: `${Math.min(100, wellbeingProgress)}%`,
-                    backgroundColor: '#8B5CF6' // purple-500
-                  }}
-                ></div>
-              </div>
-            </div>
-            
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="font-medium">Health</span>
-                <span>{Math.round(healthProgress)}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
-                <div 
-                  className="h-3 rounded-full" 
-                  style={{ 
-                    width: `${Math.min(100, healthProgress)}%`,
-                    backgroundColor: '#10B981' // emerald-500
-                  }}
-                ></div>
-              </div>
-            </div>
-            
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="font-medium">Productivity</span>
-                <span>{Math.round(productivityProgress)}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
-                <div 
-                  className="h-3 rounded-full" 
-                  style={{ 
-                    width: `${Math.min(100, productivityProgress)}%`,
-                    backgroundColor: '#F59E0B' // amber-500
-                  }}
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Summary metrics */}
-        <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-          <h3 className="text-lg font-semibold mb-4">Overall Summary</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <div className="text-sm text-gray-600">Goals On Track</div>
-              <div className="text-2xl font-bold text-green-600">
-                {Math.round(
-                  (socialProgress >= 50 ? 1 : 0) + 
-                  (wellbeingProgress >= 50 ? 1 : 0) + 
-                  (healthProgress >= 50 ? 1 : 0) + 
-                  (productivityProgress >= 50 ? 1 : 0)
+        {isStravaConnected ? (
+          <div>
+            <div className="bg-orange-900 text-orange-100 p-4 rounded-lg mb-6 flex justify-between items-center">
+              <div>
+                <p className="font-medium">Connected to Strava</p>
+                {stravaData?.lastUpdated && (
+                  <p className="text-sm text-orange-300 mt-1">
+                    Last updated: {new Date(stravaData.lastUpdated).toLocaleString()}
+                  </p>
                 )}
-                <span className="text-sm text-gray-500">/4</span>
+                {stravaData?.athlete && (
+                  <p className="text-sm text-orange-300 mt-1">
+                    Athlete: {stravaData.athlete.firstname} {stravaData.athlete.lastname}
+                  </p>
+                )}
+              </div>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={fetchStravaData}
+                  disabled={isLoadingStrava}
+                  className="px-4 py-2 bg-orange-700 hover:bg-orange-600 rounded-lg text-white text-sm"
+                >
+                  {isLoadingStrava ? "Syncing..." : "Sync Now"}
+                </button>
+                
+                <button
+                  onClick={importStravaData}
+                  disabled={isLoading || isLoadingStrava}
+                  className="px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded-lg text-white text-sm"
+                >
+                  {isLoading ? "Importing..." : "Import to Health Metrics"}
+                </button>
+                
+                <button
+                  onClick={() => {
+                    if (window.confirm("Are you sure you want to disconnect from Strava?")) {
+                      disconnectFromStrava();
+                    }
+                  }}
+                  className="px-4 py-2 bg-red-700 hover:bg-red-600 rounded-lg text-white text-sm"
+                >
+                  Disconnect
+                </button>
               </div>
             </div>
-            <div>
-              <div className="text-sm text-gray-600">Overall Balance</div>
-              <div className="text-2xl font-bold text-blue-600">
-                {Math.round((socialProgress + wellbeingProgress + healthProgress + productivityProgress) / 4)}%
+            
+            {isLoadingStrava ? (
+              <div className="text-center py-10">
+                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-orange-500 border-r-transparent"></div>
+                <p className="mt-4 text-gray-400">Fetching your Strava data...</p>
               </div>
+            ) : stravaData ? (
+              <div className="space-y-6">
+                {/* Activities Summary */}
+                <div className="bg-gray-800 rounded-lg shadow p-4 border border-gray-700">
+                  <h3 className="text-xl font-semibold mb-4 text-gray-200">Activities</h3>
+                  
+                  {stravaData.activities && stravaData.activities.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-700">
+                        <thead className="bg-gray-900">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Activity</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Type</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Distance</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Duration</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Elevation</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-gray-800 divide-y divide-gray-700">
+                          {stravaData.activities.map((activity, index) => (
+                            <tr key={activity.id || index} className={index % 2 === 0 ? 'bg-gray-750' : 'bg-gray-800'}>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                                {new Date(activity.start_date).toLocaleDateString()}
+                              </td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                                {activity.name}
+                              </td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                                {activity.type}
+                              </td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                                {(activity.distance / 1000).toFixed(2)} km
+                              </td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                                {Math.floor(activity.moving_time / 60)} min
+                              </td>
+                              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-300">
+                                {activity.total_elevation_gain} m
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-gray-400">No activity data available.</p>
+                  )}
+                </div>
+                
+                {/* Activity Stats Summary */}
+                {stravaData.summary && (
+                  <div className="bg-gray-800 rounded-lg shadow p-4 border border-gray-700">
+                    <h3 className="text-xl font-semibold mb-4 text-gray-200">Activity Summary</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="bg-gray-700 p-4 rounded-lg">
+                        <div className="text-sm text-gray-400">Total Activities</div>
+                        <div className="text-2xl font-bold text-gray-100">{stravaData.summary.totalActivities}</div>
+                      </div>
+                      
+                      <div className="bg-gray-700 p-4 rounded-lg">
+                        <div className="text-sm text-gray-400">Total Distance</div>
+                        <div className="text-2xl font-bold text-gray-100">{(stravaData.summary.totalDistance / 1000).toFixed(1)} km</div>
+                      </div>
+                      
+                      <div className="bg-gray-700 p-4 rounded-lg">
+                        <div className="text-sm text-gray-400">Total Elevation</div>
+                        <div className="text-2xl font-bold text-gray-100">{stravaData.summary.totalElevation.toFixed(0)} m</div>
+                      </div>
+                      
+                      <div className="bg-gray-700 p-4 rounded-lg">
+                        <div className="text-sm text-gray-400">Total Duration</div>
+                        <div className="text-2xl font-bold text-gray-100">
+                          {Math.floor(stravaData.summary.totalDuration / 3600)}h {Math.floor((stravaData.summary.totalDuration % 3600) / 60)}m
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Activity type breakdown if available */}
+                    {stravaData.summary.activityCounts && Object.keys(stravaData.summary.activityCounts).length > 0 && (
+                      <div className="mt-6">
+                        <h4 className="text-lg font-medium mb-3 text-gray-300">Activity Types</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {Object.entries(stravaData.summary.activityCounts).map(([type, count]) => (
+                            <div key={type} className="bg-gray-750 p-2 rounded text-center">
+                              <div className="text-sm font-medium text-gray-300">{type}</div>
+                              <div className="text-lg text-gray-100">{count}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-10">
+                <p className="text-gray-400">No Strava data available. Try syncing.</p>
+                <button
+                  onClick={fetchStravaData}
+                  className="mt-4 px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg text-white"
+                >
+                  Sync with Strava
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
+            <h3 className="text-xl font-semibold mb-4 text-gray-200">Connect to Strava</h3>
+            <p className="text-gray-400 mb-6">
+              Connect your Strava account to automatically sync your activities, routes, and performance stats.
+            </p>
+            
+            <div className="text-center">
+              {process.env.REACT_APP_STRAVA_CLIENT_ID && 
+               process.env.REACT_APP_STRAVA_CLIENT_ID !== '' ? (
+                <>
+                  <button
+                    onClick={connectToStrava}
+                    disabled={isLoadingStrava || !stravaService}
+                    className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-md flex items-center justify-center mx-auto"
+                  >
+                    {isLoadingStrava ? (
+                      <>
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-solid border-white border-t-transparent"></div>
+                        Connecting...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169" />
+                        </svg>
+                        Connect to Strava
+                      </>
+                    )}
+                  </button>
+                  
+                  <p className="mt-4 text-xs text-gray-500">
+                    You'll be redirected to Strava to authorize access to your activities.
+                    Your data is stored securely and only used within this app.
+                  </p>
+                </>
+              ) : (
+                <div className="bg-yellow-800 p-4 rounded-lg text-yellow-100 max-w-lg mx-auto">
+                  <h4 className="font-bold mb-2">Strava Setup Required</h4>
+                  <p className="mb-2">Strava integration requires additional setup:</p>
+                  <ol className="list-decimal pl-5 mb-3 text-left text-sm space-y-1">
+                    <li>Create an application on Strava API portal</li>
+                    <li>Configure your API keys in the Settings</li>
+                    <li>Set up the callback URL for authentication</li>
+                    <li>Add your client ID and secret to the .env file</li>
+                  </ol>
+                  <p className="text-sm">Follow the instructions in the README for detailed setup.</p>
+                </div>
+              )}
             </div>
           </div>
+        )}
+      </div>
+    );
+  };
+  
+  
+  // New component for rendering a goal progress bar
+  const GoalProgressBar = ({ goal }) => {
+    // Handle different types of goals
+    const isRolling = goal.isRolling;
+    const progress = goal.progress || 0;
+    
+    return (
+      <div className="mb-4">
+        <div className="flex justify-between mb-1">
+          <span className="text-sm font-medium text-gray-200">{goal.description}</span>
+          <span className="text-sm font-medium text-gray-200">{Math.round(progress)}%</span>
+        </div>
+        <div className="w-full bg-gray-700 rounded-full h-2.5">
+          <div 
+            className={`h-2.5 rounded-full ${progress >= 100 ? 'bg-green-500' : progress >= 70 ? 'bg-blue-500' : progress >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+            style={{ width: `${progress}%` }}
+          ></div>
         </div>
       </div>
     );
   };
-
-  const renderSocialTab = () => {
-    const metrics = getAllMetrics().social;
-    const organizedGoals = organizeGoalsByCategory();
-    const socialGoals = Object.entries(organizedGoals)
-      .filter(([category]) => category === "Maintain connections" || category === "Kat" || category === "Make friends")
-      .reduce((acc, [category, goals]) => {
-        acc[category] = goals;
-        return acc;
-      }, {});
+  
+  // Health Metric Form component
+  const HealthMetricForm = () => {
+    const [showForm, setShowForm] = useState(false);
+    const [metricFormData, setMetricFormData] = useState({
+      weight: '',
+      systolic: '',
+      diastolic: '',
+      ldl: '',
+      hdl: '',
+      notes: '',
+      source: 'manual'
+    });
+    
+    const handleMetricChange = (e) => {
+      const { name, value } = e.target;
+      setMetricFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    };
+    
+    const handleMetricSubmit = async (e) => {
+      e.preventDefault();
+      await addHealthMetric(metricFormData);
+      
+      // Reset form
+      setMetricFormData({
+        weight: '',
+        systolic: '',
+        diastolic: '',
+        ldl: '',
+        hdl: '',
+        notes: '',
+        source: 'manual'
+      });
+      
+      setShowForm(false);
+    };
     
     return (
       <>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Family & Friends</h3>
-            {renderProgressBar("Family Contact", metrics.family.rate, 100)}
-            <p className="text-sm text-gray-600 mb-4">{metrics.family.daysCount} days in selected period (Target: {Math.round(metrics.family.target)} days)</p>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold text-gray-100">Health Metrics</h2>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white"
+          >
+            {showForm ? 'Cancel' : 'Add Health Metric'}
+          </button>
+        </div>
+        
+        {showForm && (
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-200">Add Health Measurement</h3>
             
-            {renderProgressBar("Friend Contact", metrics.friends.rate, 100)}
-            <p className="text-sm text-gray-600 mb-4">{metrics.friends.daysCount} days in selected period (Target: {Math.round(metrics.friends.target)} days)</p>
+            <form onSubmit={handleMetricSubmit}>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label htmlFor="weight" className="block text-sm font-medium mb-1 text-gray-300">
+                    Weight (lbs)
+                  </label>
+                  <input
+                    type="number"
+                    id="weight"
+                    name="weight"
+                    value={metricFormData.weight}
+                    onChange={handleMetricChange}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                    step="0.1"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="systolic" className="block text-sm font-medium mb-1 text-gray-300">
+                    Systolic BP
+                  </label>
+                  <input
+                    type="number"
+                    id="systolic"
+                    name="systolic"
+                    value={metricFormData.systolic}
+                    onChange={handleMetricChange}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="diastolic" className="block text-sm font-medium mb-1 text-gray-300">
+                    Diastolic BP
+                  </label>
+                  <input
+                    type="number"
+                    id="diastolic"
+                    name="diastolic"
+                    value={metricFormData.diastolic}
+                    onChange={handleMetricChange}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="ldl" className="block text-sm font-medium mb-1 text-gray-300">
+                    LDL (mg/dL)
+                  </label>
+                  <input
+                    type="number"
+                    id="ldl"
+                    name="ldl"
+                    value={metricFormData.ldl}
+                    onChange={handleMetricChange}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="hdl" className="block text-sm font-medium mb-1 text-gray-300">
+                    HDL (mg/dL)
+                  </label>
+                  <input
+                    type="number"
+                    id="hdl"
+                    name="hdl"
+                    value={metricFormData.hdl}
+                    onChange={handleMetricChange}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="source" className="block text-sm font-medium mb-1 text-gray-300">
+                    Source
+                  </label>
+                  <select
+                    id="source"
+                    name="source"
+                    value={metricFormData.source}
+                    onChange={handleMetricChange}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                  >
+                    <option value="manual">Manual Entry</option>
+                    <option value="doctor">Doctor Visit</option>
+                    <option value="lab">Lab Test</option>
+                    <option value="device">Device Measurement</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div className="mb-4">
+                <label htmlFor="notes" className="block text-sm font-medium mb-1 text-gray-300">
+                  Notes (optional)
+                </label>
+                <textarea
+                  id="notes"
+                  name="notes"
+                  value={metricFormData.notes}
+                  onChange={handleMetricChange}
+                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                  rows={2}
+                ></textarea>
+              </div>
+              
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                >
+                  Save Health Metric
+                </button>
+              </div>
+            </form>
           </div>
-          
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Kat Metrics</h3>
-            {renderProgressBar("Did Something Nice for Kat", metrics.kat.smile.rate, 100)}
-            <p className="text-sm text-gray-600 mb-4">Target: Most days ({goals.social.katSmilePercentage.value}%)</p>
-            
-            {renderProgressBar("Kat Reviews", metrics.kat.review.count, metrics.kat.review.target)}
-            <p className="text-sm text-gray-600 mb-4">Target: {goals.social.katReviewsPerMonth.value} per month</p>
-          </div>
-        </div>
-        
-        <div className="bg-white p-4 rounded-lg shadow mb-6">
-          <h3 className="text-lg font-semibold mb-4">New Connections</h3>
-          {renderProgressBar("New Phone Numbers", metrics.newConnections.phoneNumbers.count, goals.social.newPhoneNumbersTarget.value)}
-          <p className="text-sm text-gray-600 mb-4">Target: {goals.social.newPhoneNumbersTarget.value} by May</p>
-          
-          {renderProgressBar("Hangouts with New People", metrics.newConnections.hangouts.count, goals.social.newHangoutsTarget.value)}
-          <p className="text-sm text-gray-600 mb-4">Target: {goals.social.newHangoutsTarget.value} by May</p>
-        </div>
-        
-        {/* Display detailed goals for Social */}
-        {Object.entries(socialGoals).map(([category, goals]) => (
-          <GoalCategory key={category} title={category} goals={goals} />
-        ))}
-        
-        <h3 className="text-xl font-semibold mb-4">Social Trends</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {renderHistoricalChart('family_contact', 'Family Contact History', '#3b82f6')}
-          {renderHistoricalChart('friend_contact', 'Friend Contact History', '#10b981')}
-        </div>
+        )}
       </>
     );
   };
-
-
+  
   const renderHealthTab = () => {
     const metrics = getAllMetrics().health;
     const organizedGoals = organizeGoalsByCategory();
@@ -1722,53 +3064,108 @@ const LifeTrackerDashboard = () => {
     
     return (
       <>
+        <HealthMetricForm />
+        
+        {/* Recent Health Metrics Table */}
+        <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
+          <h3 className="text-lg font-semibold mb-4 text-gray-200">Recent Health Measurements</h3>
+          
+          {isLoadingHealthMetrics ? (
+            <div className="text-center py-4">
+              <div className="inline-block h-5 w-5 animate-spin rounded-full border-3 border-solid border-blue-400 border-r-transparent"></div>
+              <p className="mt-2 text-sm text-gray-400">Loading health metrics...</p>
+            </div>
+          ) : healthMetrics.length === 0 ? (
+            <p className="text-gray-400 py-4 text-center">No health metrics recorded yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-700">
+                <thead className="bg-gray-700">
+                  <tr>
+                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Date</th>
+                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Weight</th>
+                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">BP</th>
+                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">LDL</th>
+                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">HDL</th>
+                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Source</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-gray-800 divide-y divide-gray-700">
+                  {healthMetrics.slice(0, 5).map((metric) => (
+                    <tr key={metric.id}>
+                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
+                        {metric.date.toLocaleDateString()}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
+                        {metric.weight ? `${metric.weight} lbs` : '-'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
+                        {metric.systolic && metric.diastolic ? `${metric.systolic}/${metric.diastolic}` : '-'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
+                        {metric.ldl ? `${metric.ldl} mg/dL` : '-'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
+                        {metric.hdl ? `${metric.hdl} mg/dL` : '-'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-300 capitalize">
+                        {metric.source || 'manual'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Strength (400 Challenge)</h3>
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+            <h3 className="text-lg font-semibold mb-4 text-gray-200">Strength (400 Challenge)</h3>
             <div className="mb-6">
               <div className="flex justify-between mb-1">
-                <span className="text-lg font-bold">Total: {metrics.strength.total}/{goals.health.strengthChallengeTarget.value}</span>
-                <span className="text-lg font-bold">{Math.round(metrics.strength.progress)}%</span>
+                <span className="text-lg font-bold text-gray-200">Total: {metrics.strength.total}/{goals.health.strengthChallengeTarget.value}</span>
+                <span className="text-lg font-bold text-gray-200">{Math.round(metrics.strength.progress)}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-4">
+              <div className="w-full bg-gray-700 rounded-full h-4 border border-gray-600">
                 <div className="bg-blue-600 h-4 rounded-full" style={{ width: `${metrics.strength.progress}%` }}></div>
               </div>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="font-medium">Pushups: {metrics.strength.pushups}</p>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <p className="font-medium text-gray-300">Pushups: {metrics.strength.pushups}</p>
+                <div className="w-full bg-gray-700 rounded-full h-2 border border-gray-600">
                   <div className="bg-green-500 h-2 rounded-full" style={{ width: `${(metrics.strength.pushups/100)*100}%` }}></div>
                 </div>
               </div>
               <div>
-                <p className="font-medium">Rows: {metrics.strength.rows}</p>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <p className="font-medium text-gray-300">Rows: {metrics.strength.rows}</p>
+                <div className="w-full bg-gray-700 rounded-full h-2 border border-gray-600">
                   <div className="bg-yellow-500 h-2 rounded-full" style={{ width: `${(metrics.strength.rows/100)*100}%` }}></div>
                 </div>
               </div>
               <div>
-                <p className="font-medium">Situps: {metrics.strength.situps}</p>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <p className="font-medium text-gray-300">Situps: {metrics.strength.situps}</p>
+                <div className="w-full bg-gray-700 rounded-full h-2 border border-gray-600">
                   <div className="bg-red-500 h-2 rounded-full" style={{ width: `${(metrics.strength.situps/100)*100}%` }}></div>
                 </div>
               </div>
               <div>
-                <p className="font-medium">Squats: {metrics.strength.squats}</p>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <p className="font-medium text-gray-300">Squats: {metrics.strength.squats}</p>
+                <div className="w-full bg-gray-700 rounded-full h-2 border border-gray-600">
                   <div className="bg-purple-500 h-2 rounded-full" style={{ width: `${(metrics.strength.squats/100)*100}%` }}></div>
                 </div>
               </div>
             </div>
-            <p className="text-sm text-gray-600 mt-4">Target: Complete {goals.health.strengthChallengeTarget.value} Challenge by May 1st</p>
+            <p className="text-sm text-gray-400 mt-4">Target: Complete {goals.health.strengthChallengeTarget.value} Challenge by May 1st</p>
           </div>
           
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Sleep</h3>
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+            <h3 className="text-lg font-semibold mb-4 text-gray-200">Sleep</h3>
             {renderProgressBar("Bed On Time", metrics.sleep.bedOnTime.rate, 100)}
             {renderProgressBar("Up On Time", metrics.sleep.upOnTime.rate, 100)}
-            <p className="text-sm text-gray-600 mt-2">Target: {goals.health.sleepOnTimePercentage.value}% within one hour of bedtime weekly average</p>
+            <p className="text-sm text-gray-400 mt-2">Target: {goals.health.sleepOnTimePercentage.value}% within one hour of bedtime weekly average</p>
           </div>
         </div>
         
@@ -1777,7 +3174,7 @@ const LifeTrackerDashboard = () => {
           <GoalCategory key={category} title={category} goals={goals} />
         ))}
         
-        <h3 className="text-xl font-semibold mb-4">Health Trends</h3>
+        <h3 className="text-xl font-semibold mb-4 text-gray-200">Health Trends</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {renderHistoricalChart('strength_total', '400 Challenge Progress', '#3b82f6')}
           {renderHistoricalChart('sleep_on_time', 'Sleep On Time History', '#8b5cf6')}
@@ -1799,18 +3196,18 @@ const LifeTrackerDashboard = () => {
     return (
       <>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Language, Math & Coding</h3>
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+            <h3 className="text-lg font-semibold mb-4 text-gray-200">Language, Math & Coding</h3>
             {renderProgressBar("Language", metrics.language.rate, 100)}
             {renderProgressBar("Math", metrics.math.rate, 100)}
             {renderProgressBar("Coding", metrics.code.rate, 100)}
-            <p className="text-sm text-gray-600 mt-2">Target: More than {goals.productivity.languageDaysPercentage.value}% of days monthly rolling average</p>
+            <p className="text-sm text-gray-400 mt-2">Target: More than {goals.productivity.languageDaysPercentage.value}% of days monthly rolling average</p>
           </div>
           
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Lesson Completion</h3>
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+            <h3 className="text-lg font-semibold mb-4 text-gray-200">Lesson Completion</h3>
             {renderProgressBar("Lessons Completed", metrics.lessons.count, metrics.lessons.target)}
-            <p className="text-sm text-gray-600 mt-2">Target: At least {goals.productivity.lessonsPerMonth.value} per month</p>
+            <p className="text-sm text-gray-400 mt-2">Target: At least {goals.productivity.lessonsPerMonth.value} per month</p>
           </div>
         </div>
         
@@ -1819,7 +3216,7 @@ const LifeTrackerDashboard = () => {
           <GoalCategory key={category} title={category} goals={goals} />
         ))}
         
-        <h3 className="text-xl font-semibold mb-4">Productivity Trends</h3>
+        <h3 className="text-xl font-semibold mb-4 text-gray-200">Productivity Trends</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {renderHistoricalChart('language', 'Language Learning History', '#3b82f6')}
           {renderHistoricalChart('math', 'Math Study History', '#10b981')}
@@ -1844,25 +3241,25 @@ const LifeTrackerDashboard = () => {
     return (
       <>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Journaling</h3>
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+            <h3 className="text-lg font-semibold mb-4 text-gray-200">Journaling</h3>
             {renderProgressBar("Morning Journal", metrics.journaling.morningRate, 100)}
             {renderProgressBar("Evening Journal", metrics.journaling.eveningRate, 100)}
             {renderProgressBar("Both Morning & Evening", metrics.journaling.bothRate, 100)}
-            <p className="text-sm text-gray-600 mt-2">Target: >{goals.wellbeing.journalingPercentage.value}% monthly rolling average</p>
+            <p className="text-sm text-gray-400 mt-2">Target: >{goals.wellbeing.journalingPercentage.value}% monthly rolling average</p>
           </div>
           
-          <div className="bg-white p-4 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Meditation/Prayer</h3>
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700">
+            <h3 className="text-lg font-semibold mb-4 text-gray-200">Meditation/Prayer</h3>
             {renderProgressBar("Days with Meditation", metrics.meditation.rate, 100)}
-            <p className="text-sm text-gray-600 mt-2">Target: >{goals.wellbeing.meditationPercentage.value}% of days monthly rolling average</p>
+            <p className="text-sm text-gray-400 mt-2">Target: >{goals.wellbeing.meditationPercentage.value}% of days monthly rolling average</p>
           </div>
         </div>
         
-        <div className="bg-white p-4 rounded-lg shadow mb-6">
-          <h3 className="text-lg font-semibold mb-4">Epic Activities</h3>
+        <div className="bg-gray-800 p-4 rounded-lg shadow mb-6 border border-gray-700">
+          <h3 className="text-lg font-semibold mb-4 text-gray-200">Epic Activities</h3>
           {renderProgressBar("Epic Activities", metrics.epic.count, metrics.epic.target)}
-          <p className="text-sm text-gray-600 mt-2">Target: At least {goals.wellbeing.epicActivitiesPerMonth.value} per month</p>
+          <p className="text-sm text-gray-400 mt-2">Target: At least {goals.wellbeing.epicActivitiesPerMonth.value} per month</p>
         </div>
         
         {/* Display detailed goals for Wellbeing */}
@@ -1870,7 +3267,7 @@ const LifeTrackerDashboard = () => {
           <GoalCategory key={category} title={category} goals={goals} />
         ))}
         
-        <h3 className="text-xl font-semibold mb-4">Wellbeing Trends</h3>
+        <h3 className="text-xl font-semibold mb-4 text-gray-200">Wellbeing Trends</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {renderHistoricalChart('morning_journal', 'Morning Journal History', '#f59e0b')}
           {renderHistoricalChart('evening_journal', 'Evening Journal History', '#ef4444')}
@@ -1880,6 +3277,542 @@ const LifeTrackerDashboard = () => {
       </>
     );
   };
+
+  // Projects state
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  
+  
+  // Project Form Component
+  const ProjectForm = ({ onSubmit, initialData }) => {
+    const [projectData, setProjectData] = useState(initialData || {
+      title: '',
+      description: '',
+      endDate: '',
+      goals: []
+    });
+    
+    const [isEditing, setIsEditing] = useState(false);
+    
+    const handleChange = (e) => {
+      const { name, value } = e.target;
+      setProjectData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    };
+    
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      
+      // Validate form data
+      if (!projectData.title.trim()) {
+        setError('Project title is required');
+        return;
+      }
+      
+      if (!projectData.endDate) {
+        setError('Project end date is required');
+        return;
+      }
+      
+      // Format data for submission
+      const formattedData = {
+        ...projectData,
+        endDate: Timestamp.fromDate(new Date(projectData.endDate))
+      };
+      
+      await onSubmit(formattedData);
+      
+      // Reset form if not editing an existing project
+      if (!initialData) {
+        setProjectData({
+          title: '',
+          description: '',
+          endDate: '',
+          goals: []
+        });
+      } else {
+        setIsEditing(false);
+      }
+    };
+    
+    return (
+      <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
+        <h3 className="text-lg font-semibold mb-4 text-gray-100">
+          {initialData ? 'Edit Project' : 'Create New Project'}
+        </h3>
+        
+        {initialData && !isEditing ? (
+          <div className="text-center">
+            <button
+              onClick={() => setIsEditing(true)}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+            >
+              Edit Project Details
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label htmlFor="title" className="block text-sm font-medium mb-1 text-gray-300">
+                Project Title
+              </label>
+              <input
+                type="text"
+                id="title"
+                name="title"
+                value={projectData.title}
+                onChange={handleChange}
+                className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400"
+                placeholder="Enter project title"
+                required
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label htmlFor="description" className="block text-sm font-medium mb-1 text-gray-300">
+                Description (Optional)
+              </label>
+              <textarea
+                id="description"
+                name="description"
+                value={projectData.description}
+                onChange={handleChange}
+                className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400"
+                rows={3}
+                placeholder="Describe your project"
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label htmlFor="endDate" className="block text-sm font-medium mb-1 text-gray-300">
+                Target Completion Date
+              </label>
+              <input
+                type="date"
+                id="endDate"
+                name="endDate"
+                value={projectData.endDate}
+                onChange={handleChange}
+                className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                required
+              />
+            </div>
+            
+            <div className="flex justify-end">
+              {initialData && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-md mr-2"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+              >
+                {initialData ? 'Update Project' : 'Create Project'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    );
+  };
+  
+  // Project Timeline Component
+  const ProjectTimeline = ({ project, onUpdate }) => {
+    const [showGoalForm, setShowGoalForm] = useState(false);
+    const [newGoal, setNewGoal] = useState({
+      title: '',
+      description: '',
+      dueDate: '',
+      completed: false
+    });
+    
+    // Calculate timeline spans
+    const calculateTimelinePosition = (date) => {
+      if (!project.endDate || !project.createdAt) return 0;
+      
+      const projectStart = new Date(project.createdAt).getTime();
+      const projectEnd = new Date(project.endDate).getTime();
+      const goalDate = new Date(date).getTime();
+      
+      // Calculate percentage
+      const totalDuration = projectEnd - projectStart;
+      const goalPosition = goalDate - projectStart;
+      
+      return Math.min(100, Math.max(0, (goalPosition / totalDuration) * 100));
+    };
+    
+    const handleGoalChange = (e) => {
+      const { name, value } = e.target;
+      setNewGoal(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    };
+    
+    const addGoal = () => {
+      // Validate form data
+      if (!newGoal.title.trim() || !newGoal.dueDate) {
+        setError('Goal title and due date are required');
+        return;
+      }
+      
+      // Add goal to project
+      const updatedGoals = [
+        ...project.goals,
+        {
+          id: Date.now().toString(), // Simple unique ID
+          ...newGoal,
+          completed: false
+        }
+      ];
+      
+      // Sort goals by due date
+      updatedGoals.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+      
+      // Update the project
+      onUpdate({
+        ...project,
+        goals: updatedGoals
+      });
+      
+      // Reset form
+      setNewGoal({
+        title: '',
+        description: '',
+        dueDate: '',
+        completed: false
+      });
+      setShowGoalForm(false);
+    };
+    
+    const toggleGoalCompleted = (goalId) => {
+      const updatedGoals = project.goals.map(goal => {
+        if (goal.id === goalId) {
+          return {
+            ...goal,
+            completed: !goal.completed
+          };
+        }
+        return goal;
+      });
+      
+      onUpdate({
+        ...project,
+        goals: updatedGoals
+      });
+    };
+    
+    // Format dates for display
+    const formatDate = (date) => {
+      if (!date) return 'N/A';
+      return new Date(date).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    };
+    
+    // Calculate progress
+    const calculateProgress = () => {
+      if (project.goals.length === 0) return 0;
+      
+      const completedGoals = project.goals.filter(goal => goal.completed).length;
+      return (completedGoals / project.goals.length) * 100;
+    };
+    
+    // Get the last completed goal
+    const getLastCompletedGoalPosition = () => {
+      if (project.goals.length === 0) return 0;
+      
+      const completedGoals = project.goals
+        .filter(goal => goal.completed)
+        .sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate));
+      
+      if (completedGoals.length === 0) return 0;
+      return calculateTimelinePosition(completedGoals[0].dueDate);
+    };
+    
+    return (
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 shadow-lg">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="text-lg font-bold text-gray-100">{project.title}</h3>
+          
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setShowGoalForm(!showGoalForm)}
+              className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs"
+            >
+              {showGoalForm ? 'Cancel' : 'Add Goal'}
+            </button>
+            
+            <button
+              onClick={() => {
+                if (window.confirm(`Mark project "${project.title}" as complete?\n\nThis will delete the project. This action cannot be undone.`)) {
+                  deleteProject(project.id);
+                }
+              }}
+              className="px-2 py-1 bg-red-700 hover:bg-red-800 text-white text-xs rounded-md"
+            >
+              Complete
+            </button>
+          </div>
+        </div>
+        
+        {showGoalForm && (
+          <div className="mb-4 p-3 bg-gray-700 rounded-md border border-gray-600">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label htmlFor="title" className="block text-xs font-medium mb-1 text-gray-300">
+                  Goal Title
+                </label>
+                <input
+                  type="text"
+                  id="title"
+                  name="title"
+                  value={newGoal.title}
+                  onChange={handleGoalChange}
+                  className="w-full p-1.5 text-sm bg-gray-600 border border-gray-500 rounded-md text-white"
+                  placeholder="Goal title"
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="dueDate" className="block text-xs font-medium mb-1 text-gray-300">
+                  Due Date
+                </label>
+                <input
+                  type="date"
+                  id="dueDate"
+                  name="dueDate"
+                  value={newGoal.dueDate}
+                  onChange={handleGoalChange}
+                  className="w-full p-1.5 text-sm bg-gray-600 border border-gray-500 rounded-md text-white"
+                />
+              </div>
+              
+              <div className="flex items-end">
+                <button
+                  onClick={addGoal}
+                  className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm"
+                >
+                  Add Goal
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Timeline visualization */}
+        <div className="mt-3 mb-1">
+          <div className="relative h-16">
+            
+            {/* Main timeline bar - using gradient based on progress */}
+            <div className="absolute top-6 left-0 right-0 h-2 rounded-full overflow-hidden">
+              {/* Create a gradient to represent progress */}
+              <div 
+                className="h-full w-full relative"
+                style={{
+                  background: `linear-gradient(to right, 
+                    #10b981 0%, 
+                    #10b981 ${getLastCompletedGoalPosition()}%, 
+                    #374151 ${getLastCompletedGoalPosition()}%, 
+                    #374151 100%)`
+                }}
+              >
+                {/* Completion markers at 25%, 50%, and 75% */}
+                <div className="absolute top-0 bottom-0 left-1/4 w-0.5 bg-gray-600 opacity-50"></div>
+                <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-gray-600 opacity-50"></div>
+                <div className="absolute top-0 bottom-0 left-3/4 w-0.5 bg-gray-600 opacity-50"></div>
+              </div>
+            </div>
+            
+            {/* Timeline start point */}
+            <div className="absolute top-4 left-0 flex flex-col items-center">
+              <div className="w-4 h-4 rounded-full bg-gray-800 border-2 border-green-500 z-10 flex items-center justify-center">
+                <div className="w-1 h-1 rounded-full bg-green-400"></div>
+              </div>
+            </div>
+            
+            {/* Timeline end point */}
+            <div className="absolute top-4 right-0 flex flex-col items-center">
+              <div className="w-4 h-4 rounded-full bg-gray-800 border-2 border-green-500 z-10 flex items-center justify-center">
+                <div className="w-1 h-1 rounded-full bg-green-400"></div>
+              </div>
+            </div>
+            
+            {/* Goal nodes */}
+            {project.goals.map((goal, index) => {
+              const position = calculateTimelinePosition(goal.dueDate);
+              
+              return (
+                <div 
+                  key={goal.id} 
+                  className="absolute top-4 flex flex-col items-center group"
+                  style={{ left: `${position}%`, transform: 'translateX(-50%)' }}
+                >
+                  <div 
+                    className={`w-5 h-5 rounded-full z-10 cursor-pointer border-2 flex items-center justify-center
+                      ${goal.completed 
+                        ? 'bg-gray-800 border-green-400' 
+                        : position <= getLastCompletedGoalPosition()
+                          ? 'bg-gray-800 border-yellow-500'
+                          : 'bg-gray-800 border-gray-600'
+                      }`}
+                    onClick={() => toggleGoalCompleted(goal.id)}
+                    title={`${goal.title} (${formatDate(goal.dueDate)})`}
+                  >
+                    {/* Inner dot that changes color based on completion */}
+                    {goal.completed && (
+                      <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                    )}
+                  </div>
+                  {/* Small permanent label */}
+                  <div className="text-[8px] text-gray-500 mt-0.5 max-w-[50px] text-center overflow-hidden whitespace-nowrap text-ellipsis">
+                    {goal.title}
+                  </div>
+                  
+                  {/* Hover tooltip with more details and edit options */}
+                  <div className="hidden group-hover:block absolute top-9 left-1/2 transform -translate-x-1/2 mt-1 bg-gray-900 px-3 py-2 rounded text-xs text-gray-300 z-20 border border-gray-700 shadow-lg min-w-[150px]">
+                    <div className="font-medium">{goal.title}</div>
+                    <div className="mt-1 text-gray-400">Due: {formatDate(goal.dueDate)}</div>
+                    <div className="mt-2 flex justify-center">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          
+                          if (window.confirm(`Delete goal: ${goal.title}?`)) {
+                            const updatedGoals = project.goals.filter(g => g.id !== goal.id);
+                            
+                            // Update the project without this goal
+                            onUpdate({
+                              ...project,
+                              goals: updatedGoals
+                            });
+                          }
+                        }}
+                        className="px-3 py-1 text-xs rounded bg-red-800 text-white hover:bg-red-700"
+                      >
+                        Delete Goal
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Overview Tab with Projects
+  const renderOverview = () => {
+    const metrics = getAllMetrics();
+    
+    return (
+      <>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          {/* Quick stats cards */}
+          <div className="bg-blue-900 p-4 rounded-lg shadow border border-blue-800">
+            <h3 className="text-lg font-semibold mb-2 text-blue-100">Social</h3>
+            <div className="text-3xl font-bold text-white mb-1">{Math.round(metrics.social.family.rate)}%</div>
+            <p className="text-blue-200 text-sm">Family contact this month</p>
+          </div>
+          
+          <div className="bg-purple-900 p-4 rounded-lg shadow border border-purple-800">
+            <h3 className="text-lg font-semibold mb-2 text-purple-100">Wellbeing</h3>
+            <div className="text-3xl font-bold text-white mb-1">{Math.round(metrics.wellbeing.journaling.totalRate)}%</div>
+            <p className="text-purple-200 text-sm">Journaling completion</p>
+          </div>
+          
+          <div className="bg-green-900 p-4 rounded-lg shadow border border-green-800">
+            <h3 className="text-lg font-semibold mb-2 text-green-100">Health</h3>
+            <div className="text-3xl font-bold text-white mb-1">{metrics.health.strength.total}</div>
+            <p className="text-green-200 text-sm">Strength challenge progress</p>
+          </div>
+          
+          <div className="bg-amber-900 p-4 rounded-lg shadow border border-amber-800">
+            <h3 className="text-lg font-semibold mb-2 text-amber-100">Productivity</h3>
+            <div className="text-3xl font-bold text-white mb-1">{Math.round(metrics.productivity.code.rate)}%</div>
+            <p className="text-amber-200 text-sm">Coding practice days</p>
+          </div>
+        </div>
+        
+        {/* Projects Section */}
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold text-gray-100">Projects</h2>
+            <button
+              onClick={() => setShowCreateProject(!showCreateProject)}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white"
+            >
+              {showCreateProject ? 'Cancel' : 'New Project'}
+            </button>
+          </div>
+          
+          {showCreateProject && (
+            <div className="mb-6">
+              <ProjectForm onSubmit={addProject} />
+            </div>
+          )}
+          
+          {isLoadingProjects ? (
+            <div className="text-center py-10">
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-500 border-r-transparent"></div>
+              <p className="mt-4 text-gray-400">Loading projects...</p>
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="bg-gray-800 rounded-lg p-10 text-center border border-gray-700 shadow">
+              <p className="text-gray-400 mb-4">No active projects</p>
+              <button
+                onClick={() => setShowCreateProject(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white"
+              >
+                Create Your First Project
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {projects.map(project => (
+                <ProjectTimeline
+                  key={project.id}
+                  project={project}
+                  onUpdate={(updatedData) => updateProject(project.id, updatedData)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  // New Function for Database Tab
+  const renderDatabaseTab = () => {
+    const DatabaseManager = React.lazy(() => import('./DatabaseManager'));
+    
+    return (
+      <React.Suspense fallback={
+        <div className="text-center p-8">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-500 border-r-transparent"></div>
+          <p className="mt-4 text-gray-300">Loading database manager...</p>
+        </div>
+      }>
+        <DatabaseManager 
+          isAuthenticated={isAuthenticated} 
+          auth={auth}
+          setError={setError}
+        />
+      </React.Suspense>
+    );
+  };
+
 
   const renderContent = () => {
     if (isLoading) {
@@ -1898,7 +3831,7 @@ const LifeTrackerDashboard = () => {
         <div className="text-center py-12">
           <p className="text-red-500 mb-4">{error}</p>
           <button 
-            onClick={initClient}
+            onClick={() => fetchFirestoreData()}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Try Again
@@ -1910,24 +3843,53 @@ const LifeTrackerDashboard = () => {
     if (!isAuthenticated) {
       return (
         <div className="text-center py-12">
-          <h2 className="text-xl font-semibold mb-4">Connect to Google Sheets</h2>
+          <h2 className="text-xl font-semibold mb-4">Sign In to Life Tracker</h2>
           <p className="mb-6 text-gray-600">
-            To view your Life Tracker Dashboard, connect to your Google Sheet.
+            {showSignUp ? "Create an account to track your goals" : "Sign in to view your Life Tracker Dashboard"}
           </p>
-          <div className="mb-6">
-            <p className="text-sm text-gray-600 mb-4">Before connecting, please make sure:</p>
-            <ul className="text-left inline-block">
-              <li className="mb-2">1. You've set up the Google Sheets API in Google Cloud Console</li>
-              <li className="mb-2">2. You've added your API Key and Client ID to the app configuration</li>
-              <li className="mb-2">3. You've added the spreadsheet ID to the app configuration</li>
-            </ul>
+          
+          <form onSubmit={showSignUp ? handleSignUp : handleSignIn} className="max-w-md mx-auto">
+            <div className="mb-4">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                required
+              />
+            </div>
+            
+            <div className="mb-6">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <input
+                type="password"
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                required
+              />
+            </div>
+            
+            <button 
+              type="submit"
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              disabled={isLoading}
+            >
+              {isLoading ? "Please wait..." : (showSignUp ? "Sign Up" : "Sign In")}
+            </button>
+          </form>
+          
+          <div className="mt-4">
+            <button
+              onClick={() => setShowSignUp(!showSignUp)}
+              className="text-blue-600 hover:underline"
+            >
+              {showSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
+            </button>
           </div>
-          <button 
-            onClick={handleAuthClick}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Connect to Google Sheets
-          </button>
         </div>
       );
     }
@@ -1937,59 +3899,397 @@ const LifeTrackerDashboard = () => {
         {renderDashboardHeader()}
         {renderGoalSettings()}
         
+        {/* Show recent Strava activity on all tabs if available */}
+        {isStravaConnected && stravaData?.activities?.length > 0 && activeTab !== 'strava' && (
+          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
+            <h3 className="text-lg font-medium text-gray-200 mb-3 flex justify-between items-center">
+              <span>Latest Strava Activity</span>
+              <button 
+                onClick={() => setActiveTab('strava')}
+                className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                View All
+              </button>
+            </h3>
+            {stravaData.activities.slice(0, 1).map((activity, index) => (
+              <div key={activity.id || index} className="bg-gray-700 rounded p-3">
+                <div className="flex justify-between">
+                  <div>
+                    <span className="font-bold text-gray-200">{activity.name}</span>
+                    <p className="text-sm text-gray-400">{new Date(activity.start_date).toLocaleDateString()}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-blue-400">
+                      <span className="font-bold">{Math.floor(activity.moving_time / 60)}</span>
+                      <span className="text-sm"> min</span>
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      {(activity.distance / 1000).toFixed(2)} km
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        
         {activeTab === 'overview' && renderOverview()}
-        {activeTab === 'social' && renderSocialTab()}
+        {/* {activeTab === 'social' && renderSocialTab()} */}
         {activeTab === 'wellbeing' && renderWellbeingTab()}
         {activeTab === 'health' && renderHealthTab()}
-        {activeTab === 'productivity' && renderProductivityTab()}
+        {activeTab === 'dailylog' && renderDailyLogTab()}
+        {activeTab === 'journal' && renderJournalTab()}
+        {activeTab === 'strava' && renderStravaTab()}
+        {activeTab === 'database' && renderDatabaseTab()}
         
         {renderDashboardFooter()}
       </>
     );
   };
 
+  // Export all data to CSV  
+  const exportAllData = async () => {
+    if (!isAuthenticated || !auth.currentUser) {
+      setError('You must be signed in to export data');
+      return;
+    }
+    
+    setIsExporting(true);
+    
+    try {
+      // Fetch all data collections
+      const dailyLogs = await getDocs(query(
+        collection(db, 'users', auth.currentUser.uid, 'logs'),
+        orderBy('timestamp', 'desc')
+      ));
+      
+      const journalEntries = await getDocs(query(
+        collection(db, 'users', auth.currentUser.uid, 'journal'),
+        orderBy('timestamp', 'desc')
+      ));
+      
+      const projectData = await getDocs(query(
+        collection(db, 'users', auth.currentUser.uid, 'projects')
+      ));
+      
+      const healthMetricsData = await getDocs(query(
+        collection(db, 'users', auth.currentUser.uid, 'healthMetrics'),
+        orderBy('date', 'desc')
+      ));
+      
+      // Process data to CSV format
+      let logsCSV = "date,";
+      // Add headers dynamically from first log
+      if (dailyLogs.docs.length > 0) {
+        const firstLog = dailyLogs.docs[0].data();
+        Object.keys(firstLog).forEach(key => {
+          if (key !== 'userId' && key !== 'timestamp') {
+            logsCSV += key + ',';
+          }
+        });
+        logsCSV = logsCSV.slice(0, -1) + '\n'; // Remove trailing comma and add newline
+        
+        // Add data rows
+        dailyLogs.docs.forEach(doc => {
+          const data = doc.data();
+          const date = data.timestamp?.toDate().toISOString() || '';
+          logsCSV += date + ',';
+          
+          Object.keys(firstLog).forEach(key => {
+            if (key !== 'userId' && key !== 'timestamp') {
+              let value = data[key] || '';
+              // Escape commas in string values
+              if (typeof value === 'string' && value.includes(',')) {
+                value = `"${value}"`;
+              }
+              logsCSV += value + ',';
+            }
+          });
+          logsCSV = logsCSV.slice(0, -1) + '\n'; // Remove trailing comma and add newline
+        });
+      } else {
+        logsCSV += "No data";
+      }
+      
+      // Process journal entries
+      let journalCSV = "date,title,type,mood,content\n";
+      if (journalEntries.docs.length > 0) {
+        journalEntries.docs.forEach(doc => {
+          const entry = doc.data();
+          const date = entry.timestamp?.toDate().toISOString() || '';
+          const title = entry.title ? `"${entry.title}"` : '';
+          const type = entry.journalType || '';
+          const mood = entry.mood || '';
+          const content = entry.content ? `"${entry.content.replace(/"/g, '""')}"` : '';
+          
+          journalCSV += `${date},${title},${type},${mood},${content}\n`;
+        });
+      } else {
+        journalCSV += "No data";
+      }
+      
+      // Process health metrics
+      let healthCSV = "date,weight,systolic,diastolic,ldl,hdl,source,notes\n";
+      if (healthMetricsData.docs.length > 0) {
+        healthMetricsData.docs.forEach(doc => {
+          const metric = doc.data();
+          const date = metric.date?.toDate().toISOString() || '';
+          const weight = metric.weight || '';
+          const systolic = metric.systolic || '';
+          const diastolic = metric.diastolic || '';
+          const ldl = metric.ldl || '';
+          const hdl = metric.hdl || '';
+          const source = metric.source || '';
+          const notes = metric.notes ? `"${metric.notes}"` : '';
+          
+          healthCSV += `${date},${weight},${systolic},${diastolic},${ldl},${hdl},${source},${notes}\n`;
+        });
+      } else {
+        healthCSV += "No data";
+      }
+      
+      // Create download links for each CSV
+      const createDownloadLink = (content, filename) => {
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+      
+      // Download each CSV file
+      createDownloadLink(logsCSV, `daily_logs_${new Date().toISOString().split('T')[0]}.csv`);
+      createDownloadLink(journalCSV, `journal_entries_${new Date().toISOString().split('T')[0]}.csv`);
+      createDownloadLink(healthCSV, `health_metrics_${new Date().toISOString().split('T')[0]}.csv`);
+      
+    } catch (error) {
+      console.error("Error exporting data:", error);
+      setError(`Error exporting data: ${error.message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const renderHeader = () => {
     return (
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-4 rounded-lg shadow-lg mb-6">
+      <div className="bg-gradient-to-r from-gray-800 to-gray-900 text-white p-4 rounded-lg shadow-lg mb-6 border border-gray-700">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
           <h1 className="text-2xl font-bold mb-4 md:mb-0">Life Goals Dashboard</h1>
           
-          <div className="flex items-center">
+          <div className="flex items-center space-x-2">
             {isAuthenticated && (
-              <button 
-                onClick={fetchSheetData} 
-                className="mr-4 p-2 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-all"
-                title="Refresh Data"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </button>
+              <>
+                <button 
+                  onClick={fetchFirestoreData} 
+                  className="p-2 bg-gray-700 rounded-full hover:bg-gray-600 transition-all"
+                  title="Refresh Data"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+                
+                <button 
+                  onClick={exportAllData} 
+                  className="px-3 py-1 bg-green-700 rounded text-sm font-medium hover:bg-green-600 flex items-center"
+                  disabled={isExporting}
+                >
+                  {isExporting ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Exporting...
+                    </>
+                  ) : (
+                    "Export CSV"
+                  )}
+                </button>
+              </>
             )}
             
-            <button 
-              onClick={handleAuthClick} 
-              className={`px-4 py-2 rounded text-sm font-medium ${
-                isAuthenticated 
-                  ? 'bg-white bg-opacity-20 hover:bg-opacity-30' 
-                  : 'bg-white text-indigo-600 hover:bg-opacity-90'
-              }`}
-            >
-              {isAuthenticated ? 'Disconnect' : 'Connect to Google Sheets'}
-            </button>
+            {isAuthenticated ? (
+              <button 
+                onClick={handleSignOut} 
+                className="px-4 py-2 rounded text-sm font-medium bg-gray-700 hover:bg-gray-600"
+              >
+                Sign Out
+              </button>
+            ) : (
+              <button 
+                onClick={() => setShowSignUp(false)} 
+                className="px-4 py-2 rounded text-sm font-medium bg-gray-700 hover:bg-gray-600"
+              >
+                Sign In
+              </button>
+            )}
           </div>
         </div>
-        
-        {/* Optional description */}
-        {isAuthenticated && (
-          <div className="mt-2 text-sm text-white text-opacity-80">
-            Track your progress toward life goals with projections based on your current pace.
-          </div>
-        )}
       </div>
     );
   };
 
+  // Strava service is imported at the top of the file
+  
+  // Strava state
+  const [stravaService, setStravaService] = useState(null);
+  const [isStravaConnected, setIsStravaConnected] = useState(false);
+  const [stravaData, setStravaData] = useState(null);
+  const [isLoadingStrava, setIsLoadingStrava] = useState(false);
+  const [stravaAuthCode, setStravaAuthCode] = useState(null);
+  
+  // Initialize Strava service when authenticated
+  useEffect(() => {
+    if (isAuthenticated && auth.currentUser) {
+      const service = new StravaService(auth.currentUser.uid);
+      setStravaService(service);
+      
+      // Check connection status
+      const checkConnection = async () => {
+        console.log('Checking Strava connection status...');
+        const isConnected = await service.checkConnection();
+        console.log('Strava connected:', isConnected);
+        setIsStravaConnected(isConnected);
+        
+        if (isConnected) {
+          // If connected but no data, fetch it
+          if (service.activityData) {
+            console.log('Using existing Strava data');
+            setStravaData(service.activityData);
+          } else {
+            console.log('Connected but no data, fetching...');
+            try {
+              const data = await service.fetchData();
+              setStravaData(data);
+            } catch (error) {
+              console.error('Error fetching initial Strava data:', error);
+            }
+          }
+        }
+      };
+      
+      checkConnection();
+      
+      // Check URL for Strava authorization code
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get('code');
+      if (code) {
+        setStravaAuthCode(code);
+        // Clean up URL to remove auth code
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } else {
+      setStravaService(null);
+      setIsStravaConnected(false);
+      setStravaData(null);
+    }
+  }, [isAuthenticated, auth.currentUser]);
+  
+  // Handle Strava authorization code if present
+  useEffect(() => {
+    if (stravaAuthCode && stravaService && !isStravaConnected) {
+      const handleAuthCode = async () => {
+        setIsLoadingStrava(true);
+        try {
+          console.log('Handling Strava auth code...');
+          await stravaService.handleCallback(stravaAuthCode);
+          setIsStravaConnected(true);
+          const data = await stravaService.fetchData();
+          setStravaData(data);
+        } catch (error) {
+          console.error('Error handling Strava auth code:', error);
+          setError(`Error connecting to Strava: ${error.message}`);
+        } finally {
+          setIsLoadingStrava(false);
+          setStravaAuthCode(null);
+        }
+      };
+      
+      handleAuthCode();
+    }
+  }, [stravaAuthCode, stravaService, isStravaConnected]);
+  
+  // Connect to Strava
+  const connectToStrava = () => {
+    // Check if client ID is properly configured
+    if (!process.env.REACT_APP_STRAVA_CLIENT_ID || 
+        process.env.REACT_APP_STRAVA_CLIENT_ID === '') {
+      setError('Strava client ID not configured. Please set up the required environment variables.');
+      return;
+    }
+    
+    if (!stravaService) {
+      setError('Strava service not initialized');
+      return;
+    }
+    
+    // Get the authorization URL and redirect to it
+    const authUrl = stravaService.getAuthorizationUrl();
+    window.location.href = authUrl;
+  };
+  
+  // Disconnect from Strava
+  const disconnectFromStrava = async () => {
+    if (!stravaService) {
+      return;
+    }
+    
+    try {
+      await stravaService.disconnect();
+      setIsStravaConnected(false);
+      setStravaData(null);
+    } catch (error) {
+      console.error('Error disconnecting from Strava:', error);
+      setError(`Error disconnecting from Strava: ${error.message}`);
+    }
+  };
+  
+  // Fetch Strava data
+  const fetchStravaData = async () => {
+    if (!stravaService || !isStravaConnected) {
+      return;
+    }
+    
+    setIsLoadingStrava(true);
+    
+    try {
+      const data = await stravaService.fetchData();
+      setStravaData(data);
+    } catch (error) {
+      console.error('Error fetching Strava data:', error);
+      setError(`Error fetching Strava data: ${error.message}`);
+    } finally {
+      setIsLoadingStrava(false);
+    }
+  };
+  
+  // Import Strava data to health metrics
+  const importStravaData = async () => {
+    if (!stravaService || !isStravaConnected || !auth.currentUser) {
+      setError('Cannot import: Strava not connected or user not authenticated');
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      const importCount = await stravaService.importToHealthMetrics(auth.currentUser.uid);
+      alert(`Successfully imported ${importCount} activities from Strava`);
+      
+      // Refresh health metrics
+      fetchHealthMetrics();
+    } catch (error) {
+      console.error('Error importing Strava data:', error);
+      setError(`Error importing Strava data: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
   // Tab navigation component
   const renderTabs = () => {
     if (!isAuthenticated) return null;
@@ -1999,33 +4299,38 @@ const LifeTrackerDashboard = () => {
       { id: 'health', label: 'Health' },
       { id: 'wellbeing', label: 'Wellbeing' },
       { id: 'social', label: 'Social' },
-      { id: 'productivity', label: 'Productivity' }
+      { id: 'dailylog', label: 'Daily Log' },
+      { id: 'journal', label: 'Journal' },
+      { id: 'strava', label: 'Strava' },
+      { id: 'database', label: 'Database' }
     ];
     
     return (
-      <div className="mb-6 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-1" aria-label="Tabs">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`py-3 px-5 border-b-2 text-center text-sm font-medium ${
-                activeTab === tab.id
-                  ? 'border-indigo-600 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-              aria-current={activeTab === tab.id ? 'page' : undefined}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+      <div className="mb-6 border-b border-gray-700">
+        <div className="overflow-x-auto pb-1">
+          <nav className="-mb-px flex" aria-label="Tabs">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`whitespace-nowrap py-3 px-4 border-b-2 text-center text-sm font-medium ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-400'
+                    : 'border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600'
+                }`}
+                aria-current={activeTab === tab.id ? 'page' : undefined}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+    <div className="min-h-screen bg-gray-900 text-gray-100 p-3 md:p-6">
       <div className="max-w-6xl mx-auto">
         {renderHeader()}
         
