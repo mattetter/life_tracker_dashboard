@@ -2061,48 +2061,68 @@ const LifeTrackerDashboard = () => {
   
   // Calculate cardio metrics based on filtered data
   const calculateCardioMetrics = useCallback(() => {
-    const filteredData = getFilteredData();
-    if (filteredData.length === 0) return { rate: 0, count: 0 };
-    
-    const cardioEntries = filteredData.filter(entry => entry.cardio === 'Yes');
-    const rate = (cardioEntries.length / filteredData.length) * 100;
-    
-    // Calculate total miles
-    const totalMiles = cardioEntries.reduce((sum, entry) => {
-      const miles = parseFloat(entry.miles || 0);
-      return sum + (isNaN(miles) ? 0 : miles);
-    }, 0);
-    
-    // Calculate exercise load based on heart rate and duration
-    // This is a simple formula that can be refined: duration(min) * avg_heart_rate / 100
-    const exerciseLoads = cardioEntries.map(entry => {
-      const duration = parseFloat(entry.duration || 0) || 30; // Default to 30 mins if not specified
-      const heartRate = parseFloat(entry.heart_rate || 0) || 130; // Default to 130 if not specified
-      return {
-        date: new Date(entry.date),
-        load: (duration * heartRate) / 100,
-        activity: entry.activity_type || 'exercise',
-        duration,
-        heartRate,
-        id: entry.id
+    try {
+      const filteredData = getFilteredData();
+      if (filteredData.length === 0) return { 
+        rate: 0, 
+        count: 0, 
+        totalMiles: 0, 
+        averageMiles: 0,
+        weeklyLoad: 0,
+        recentLoads: []
       };
-    });
-    
-    // Calculate weekly load
-    const now = new Date();
-    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const weeklyLoads = exerciseLoads.filter(load => load.date >= oneWeekAgo);
-    const weeklyLoadSum = weeklyLoads.reduce((sum, entry) => sum + entry.load, 0);
-    
-    return {
-      rate: rate,
-      count: cardioEntries.length,
-      totalMiles: totalMiles,
-      averageMiles: cardioEntries.length > 0 ? totalMiles / cardioEntries.length : 0,
-      exerciseLoads: exerciseLoads,
-      weeklyLoad: weeklyLoadSum,
-      recentLoads: weeklyLoads
-    };
+      
+      const cardioEntries = filteredData.filter(entry => entry.cardio === 'Yes');
+      const rate = (cardioEntries.length / filteredData.length) * 100;
+      
+      // Calculate total miles
+      const totalMiles = cardioEntries.reduce((sum, entry) => {
+        const miles = parseFloat(entry.miles || 0);
+        return sum + (isNaN(miles) ? 0 : miles);
+      }, 0);
+      
+      // Calculate exercise load based on heart rate and duration
+      // This is a simple formula that can be refined: duration(min) * avg_heart_rate / 100
+      const exerciseLoads = cardioEntries.map(entry => {
+        const duration = parseFloat(entry.duration || 0) || 30; // Default to 30 mins if not specified
+        const heartRate = parseFloat(entry.heart_rate || 0) || 130; // Default to 130 if not specified
+        return {
+          date: new Date(entry.date),
+          load: (duration * heartRate) / 100,
+          activity: entry.activity_type || 'exercise',
+          duration,
+          heartRate,
+          id: entry.id
+        };
+      });
+      
+      // Calculate weekly load
+      const now = new Date();
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const weeklyLoads = exerciseLoads.filter(load => load.date >= oneWeekAgo);
+      const weeklyLoadSum = weeklyLoads.reduce((sum, entry) => sum + entry.load, 0);
+      
+      return {
+        rate: rate,
+        count: cardioEntries.length,
+        totalMiles: totalMiles,
+        averageMiles: cardioEntries.length > 0 ? totalMiles / cardioEntries.length : 0,
+        exerciseLoads: exerciseLoads,
+        weeklyLoad: weeklyLoadSum,
+        recentLoads: weeklyLoads
+      };
+    } catch (error) {
+      console.error("Error calculating cardio metrics:", error);
+      // Return safe default values to prevent crashes
+      return { 
+        rate: 0, 
+        count: 0, 
+        totalMiles: 0, 
+        averageMiles: 0,
+        weeklyLoad: 0,
+        recentLoads: []
+      };
+    }
   }, [getFilteredData]);
 
   // Compile all metrics for overview
@@ -2125,7 +2145,7 @@ const LifeTrackerDashboard = () => {
         health: {
           strength: { total: 0, pushups: 0, rows: 0, situps: 0, squats: 0, progress: 0 },
           sleep: { bedOnTime: { rate: 0, progress: 0 }, upOnTime: { rate: 0 }, overall: { rate: 0 } },
-          cardio: { rate: 0, count: 0, totalMiles: 0, averageMiles: 0 }
+          cardio: { rate: 0, count: 0, totalMiles: 0, averageMiles: 0, weeklyLoad: 0, recentLoads: [] }
         },
         productivity: {
           language: { rate: 0, progress: 0 },
