@@ -74,16 +74,6 @@ const DatabaseManager = ({ isAuthenticated, auth, setError }) => {
           // Create default settings if none exist
           const defaultSettings = [
             {
-              id: 'goals',
-              goals: {
-                social: {},
-                wellbeing: {},
-                health: {},
-                productivity: {}
-              },
-              timestamp: new Date().toISOString()
-            },
-            {
               id: 'userPreferences',
               theme: 'dark',
               autoRefresh: true,

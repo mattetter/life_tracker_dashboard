@@ -63,164 +63,31 @@ const LifeTrackerDashboard = () => {
   const [password, setPassword] = useState('');
   const [showSignUp, setShowSignUp] = useState(false);
   
-  // Goals customization state
-  const [showGoalSettings, setShowGoalSettings] = useState(false);
-  const [goals, setGoals] = useState(() => {
-    const savedGoals = localStorage.getItem('lifeTrackerGoals');
-    return savedGoals ? JSON.parse(savedGoals) : {
-      social: {
-        familyContactDaysPerWeek: {
-          value: 3,
-          description: "Talk to family at least 3 days per week",
-          targetDate: "rolling", // Monthly rolling average
-          category: "Maintain connections"
-        },
-        friendContactDaysPerWeek: {
-          value: 2,
-          description: "Talk to old friends at least 2 days per week",
-          targetDate: "rolling", // Monthly rolling average
-          category: "Maintain connections"
-        },
-        katSmilePercentage: {
-          value: 70,
-          description: "Did something nice for Kat most days",
-          targetDate: "rolling", // No specific deadline
-          category: "Kat"
-        },
-        katReviewsPerMonth: {
-          value: 4,
-          description: "Do a review with Kat at least once per week",
-          targetDate: "rolling", // Weekly 
-          category: "Kat"
-        },
-        newPhoneNumbersTarget: {
-          value: 5,
-          description: "Get 5 new phone numbers by May",
-          targetDate: "2025-05-01", // By May 2025
-          category: "Make friends"
-        },
-        newHangoutsTarget: {
-          value: 2,
-          description: "Hang out with at least 2 new people by May",
-          targetDate: "2025-05-01", // By May 2025
-          category: "Make friends"
-        }
-      },
-      wellbeing: {
-        journalingPercentage: {
-          value: 60,
-          description: "Journal morning and night >60% of days",
-          targetDate: "rolling", // Monthly rolling average
-          category: "Journaling"
-        },
-        meditationPercentage: {
-          value: 50,
-          description: "Meditation/prayer >50% of days",
-          targetDate: "rolling", // Monthly rolling average
-          category: "Meditation/Prayer"
-        },
-        epicActivitiesPerMonth: {
-          value: 4,
-          description: "Something epic at least once per week",
-          targetDate: "rolling", // Monthly rolling average
-          category: "Do epic shit"
-        }
-      },
-      health: {
-        strengthChallengeTarget: {
-          value: 400,
-          description: "400 challenge by May 1st",
-          targetDate: "2025-05-01", // By May 1st 2025
-          category: "Strength"
-        },
-        ax1Target: {
-          value: 100,
-          description: "Finish AX1 by Jan 1 2026",
-          targetDate: "2026-01-01", // By Jan 1st 2026
-          category: "Strength"
-        },
-        climbBoulderTarget: {
-          value: 6,
-          description: "Climb v6 boulder by April 1st",
-          targetDate: "2025-04-01", // By April 1st 2025
-          category: "Climbing"
-        },
-        climbOutsideTarget: {
-          value: 12,
-          description: "Climb 5.12 outside by 2027",
-          targetDate: "2027-01-01", // By 2027
-          category: "Climbing"
-        },
-        run10KTarget56: {
-          value: 56,
-          description: "Run 56 minute 10K by June",
-          targetDate: "2025-06-01", // By June 2025
-          category: "Running"
-        },
-        run10KTarget52: {
-          value: 52,
-          description: "Run a 52 minute 10K by 2026",
-          targetDate: "2026-01-01", // By 2026
-          category: "Running"
-        },
-        vo2MaxTarget: {
-          value: 53,
-          description: "VO2 max above 53 in Denver by 2026",
-          targetDate: "2026-01-01", // By 2026
-          category: "Running"
-        },
-        cholesterolTarget: {
-          value: 150,
-          description: "Cholesterol < 150 by end of year",
-          targetDate: "2025-12-31", // By end of 2025
-          category: "Direct metrics"
-        },
-        hdlTarget: {
-          value: 60,
-          description: "HDL > 60 by end of year",
-          targetDate: "2025-12-31", // By end of 2025
-          category: "Direct metrics"
-        },
-        bpTarget: {
-          value: "120/80",
-          description: "BP monthly rolling average < 120/80",
-          targetDate: "2025-12-31", // By 2025
-          category: "Direct metrics"
-        },
-        sleepOnTimePercentage: {
-          value: 90,
-          description: "90% within one hour of bedtime weekly average by 2025",
-          targetDate: "2025-12-31", // By 2025
-          category: "Sleep"
-        }
-      },
-      productivity: {
-        languageDaysPercentage: {
-          value: 50,
-          description: "Language practice >50% of days",
-          targetDate: "rolling", // Monthly rolling average
-          category: "Learning"
-        },
-        mathDaysPercentage: {
-          value: 50,
-          description: "Math practice >50% of days",
-          targetDate: "rolling", // Monthly rolling average
-          category: "Learning"
-        },
-        codeDaysPercentage: {
-          value: 50,
-          description: "Coding practice >50% of days",
-          targetDate: "rolling", // Monthly rolling average
-          category: "Learning"
-        },
-        lessonsPerMonth: {
-          value: 4,
-          description: "Complete at least one lesson per week",
-          targetDate: "rolling", // Monthly rolling average
-          category: "Learning"
-        }
-      }
-    };
+  // Goals state (with fixed default values)
+  const [goals, setGoals] = useState({
+    social: {
+      familyContactDaysPerWeek: { value: 3 },
+      friendContactDaysPerWeek: { value: 2 },
+      katSmilePercentage: { value: 70 },
+      katReviewsPerMonth: { value: 4 },
+      newPhoneNumbersTarget: { value: 5 },
+      newHangoutsTarget: { value: 2 }
+    },
+    wellbeing: {
+      journalingPercentage: { value: 60 },
+      meditationPercentage: { value: 50 },
+      epicActivitiesPerMonth: { value: 4 }
+    },
+    health: {
+      strengthChallengeTarget: { value: 400 },
+      sleepOnTimePercentage: { value: 90 }
+    },
+    productivity: {
+      languageDaysPercentage: { value: 50 },
+      mathDaysPercentage: { value: 50 },
+      codeDaysPercentage: { value: 50 },
+      lessonsPerMonth: { value: 4 }
+    }
   });
   
   // Auto-refresh state
@@ -233,18 +100,7 @@ const LifeTrackerDashboard = () => {
   // We'll implement a mock for Garmin Connect instead of using the node library
   // which doesn't work well in browser environments
 
-  // Save goals to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('lifeTrackerGoals', JSON.stringify(goals));
-    
-    // If authenticated, also save to Firestore
-    if (isAuthenticated && auth.currentUser) {
-      setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'goals'), { goals })
-        .catch(error => {
-          console.error("Error saving goals to Firestore:", error);
-        });
-    }
-  }, [goals, isAuthenticated]);
+  // No longer saving goals to localStorage or Firestore
 
   // Check authentication state on component mount
   useEffect(() => {
@@ -253,7 +109,6 @@ const LifeTrackerDashboard = () => {
         console.log("User is signed in:", user.uid);
         setIsAuthenticated(true);
         fetchFirestoreData();
-        loadUserGoals(user.uid);
       } else {
         console.log("User is signed out");
         setIsAuthenticated(false);
@@ -265,24 +120,7 @@ const LifeTrackerDashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // Load user goals from Firestore
-  const loadUserGoals = async (userId) => {
-    try {
-      const docSnap = await getDoc(doc(db, 'users', userId, 'settings', 'goals'));
-      
-      if (docSnap.exists() && docSnap.data().goals) {
-        setGoals(docSnap.data().goals);
-      } else {
-        // If no goals in Firestore, use current local goals and save them
-        setDoc(doc(db, 'users', userId, 'settings', 'goals'), { goals })
-          .catch(error => {
-            console.error("Error saving initial goals to Firestore:", error);
-          });
-      }
-    } catch (error) {
-      console.error("Error loading goals from Firestore:", error);
-    }
-  };
+  // No longer loading user goals from Firestore
 
   // Set up auto-refresh for Firestore data
   useEffect(() => {
@@ -325,8 +163,7 @@ const LifeTrackerDashboard = () => {
       setIsAuthenticated(true);
       setError(null);
       
-      // Initialize user settings in Firestore
-      await setDoc(doc(db, 'users', userCredential.user.uid, 'settings', 'goals'), { goals });
+      // No longer setting goals in Firestore
     } catch (error) {
       console.error("Error signing up:", error);
       setError(`Error signing up: ${error.message}`);
@@ -406,7 +243,7 @@ const LifeTrackerDashboard = () => {
     }
   };
   
-  // Render Daily Log Tab
+  // Render Daily Log Tab with Journal functionality
   const renderDailyLogTab = () => {
     return (
       <div className="p-4">
@@ -414,7 +251,72 @@ const LifeTrackerDashboard = () => {
         <p className="mb-6 text-gray-400">
           Track your daily activities and progress toward your goals.
         </p>
-        <DailyLogForm />
+        
+        {/* Daily Log Form */}
+        <div className="mb-8">
+          <DailyLogForm />
+        </div>
+        
+        {/* Journal Entry Form */}
+        <div className="mt-10 pt-6 border-t border-gray-700">
+          <h2 className="text-2xl font-bold mb-6 text-gray-100">Journal</h2>
+          <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700 mb-6">
+            <h3 className="text-lg font-semibold mb-4 text-gray-100">New Journal Entry</h3>
+            <JournalEntryForm onSubmit={addJournalEntry} onSuccess={fetchJournalEntries} />
+          </div>
+        </div>
+        
+        {/* Journal entries list */}
+        <div className="mt-8">
+          <h3 className="text-xl font-semibold mb-4 text-gray-200">Journal Entries</h3>
+          
+          {isLoadingJournal ? (
+            <div className="text-center py-6">
+              <div className="inline-block h-6 w-6 animate-spin rounded-full border-4 border-solid border-blue-400 border-r-transparent"></div>
+              <p className="mt-2 text-gray-400">Loading journal entries...</p>
+            </div>
+          ) : journalEntries.length === 0 ? (
+            <p className="text-gray-400 py-4">No journal entries yet. Start journaling above!</p>
+          ) : (
+            <div className="space-y-6">
+              {journalEntries.map(entry => (
+                <div key={entry.id} className="bg-gray-800 p-5 rounded-lg shadow border border-gray-700">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm text-gray-400">
+                      {entry.date.toLocaleString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                    <span className="px-2 py-1 bg-blue-900 text-blue-200 text-xs rounded-full">
+                      {entry.journalType}
+                    </span>
+                  </div>
+                  
+                  {entry.title && (
+                    <h4 className="text-lg font-medium mb-2 text-gray-100">{entry.title}</h4>
+                  )}
+                  
+                  <div className="prose max-w-none text-gray-300">
+                    {entry.content.split('\n').map((paragraph, i) => (
+                      <p key={i} className="mb-2">{paragraph}</p>
+                    ))}
+                  </div>
+                  
+                  {entry.mood && (
+                    <div className="mt-3 text-sm text-gray-400">
+                      Energy Level: {entry.mood}/10
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -449,9 +351,9 @@ const LifeTrackerDashboard = () => {
     }
   }, [isAuthenticated, auth.currentUser]);
   
-  // Load journal entries when tab changes to journal
+  // Load journal entries when tab changes to daily log
   useEffect(() => {
-    if (isAuthenticated && auth.currentUser && activeTab === 'journal') {
+    if (isAuthenticated && auth.currentUser && activeTab === 'dailylog') {
       fetchJournalEntries();
     }
   }, [isAuthenticated, activeTab, fetchJournalEntries]);
@@ -656,70 +558,6 @@ const LifeTrackerDashboard = () => {
     }
   };
   
-  // Journal Tab with form and entry list
-  const renderJournalTab = () => {
-    
-    return (
-      <div className="p-4">
-        <h2 className="text-2xl font-bold mb-6 text-gray-100">Journal</h2>
-        
-        {/* Journal entry form */}
-        <JournalEntryForm onSubmit={addJournalEntry} onSuccess={fetchJournalEntries} />
-        
-        {/* Journal entries list */}
-        <div className="mt-8">
-          <h3 className="text-xl font-semibold mb-4 text-gray-200">Previous Entries</h3>
-          
-          {isLoadingJournal ? (
-            <div className="text-center py-6">
-              <div className="inline-block h-6 w-6 animate-spin rounded-full border-4 border-solid border-blue-400 border-r-transparent"></div>
-              <p className="mt-2 text-gray-400">Loading journal entries...</p>
-            </div>
-          ) : journalEntries.length === 0 ? (
-            <p className="text-gray-400 py-4">No journal entries yet. Start journaling above!</p>
-          ) : (
-            <div className="space-y-6">
-              {journalEntries.map(entry => (
-                <div key={entry.id} className="bg-gray-800 p-5 rounded-lg shadow border border-gray-700">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="text-sm text-gray-400">
-                      {entry.date.toLocaleString('en-US', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </span>
-                    <span className="px-2 py-1 bg-blue-900 text-blue-200 text-xs rounded-full">
-                      {entry.journalType}
-                    </span>
-                  </div>
-                  
-                  {entry.title && (
-                    <h4 className="text-lg font-medium mb-2 text-gray-100">{entry.title}</h4>
-                  )}
-                  
-                  <div className="prose max-w-none text-gray-300">
-                    {entry.content.split('\n').map((paragraph, i) => (
-                      <p key={i} className="mb-2">{paragraph}</p>
-                    ))}
-                  </div>
-                  
-                  {entry.mood && (
-                    <div className="mt-3 text-sm text-gray-400">
-                      Energy Level: {entry.mood}/10
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
   
   // Journal Entry Form component
   const JournalEntryForm = ({ onSubmit, onSuccess }) => {
@@ -2683,30 +2521,10 @@ const LifeTrackerDashboard = () => {
     return projections;
   }, [getAllMetrics, getFilteredData, goals]);
 
-  // New function for goal-centric data organization
+  // Function for goal organization - simplified version that doesn't use categories
   const organizeGoalsByCategory = useCallback(() => {
-    const projections = calculateProjections();
-    const organizedGoals = {};
-    
-    // First pass - collect goals by their category
-    Object.entries(projections).forEach(([mainType, typeGoals]) => {
-      Object.entries(typeGoals).forEach(([goalKey, goalData]) => {
-        const category = goalData.category;
-        
-        if (!organizedGoals[category]) {
-          organizedGoals[category] = [];
-        }
-        
-        organizedGoals[category].push({
-          id: goalKey,
-          mainType: mainType,
-          ...goalData
-        });
-      });
-    });
-    
-    return organizedGoals;
-  }, [calculateProjections]);
+    return {}; // Return empty object as we're no longer customizing goals
+  }, []);
 
 
   const renderProgressBar = (label, value, target = 100) => {
@@ -2762,174 +2580,14 @@ const LifeTrackerDashboard = () => {
               </div>
             )}
           </div>
-          <button
-            onClick={() => setShowGoalSettings(!showGoalSettings)}
-            className="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-200"
-          >
-            {showGoalSettings ? 'Hide Goal Settings' : 'Customize Goals'}
-          </button>
         </div>
       </div>
     );
   };
 
-  // Helper function to update a goal value
-  const updateGoalValue = (category, goalKey, newValue) => {
-    setGoals(prevGoals => {
-      const updatedGoals = { ...prevGoals };
-      updatedGoals[category][goalKey].value = newValue;
-      return updatedGoals;
-    });
-  };
-  
-  // Helper to update goal target date
-  const updateGoalDate = (category, goalKey, newDate) => {
-    setGoals(prevGoals => {
-      const updatedGoals = { ...prevGoals };
-      updatedGoals[category][goalKey].targetDate = newDate;
-      return updatedGoals;
-    });
-  };
-  
-  // Helper to update goal description
-  const updateGoalDescription = (category, goalKey, newDescription) => {
-    setGoals(prevGoals => {
-      const updatedGoals = { ...prevGoals };
-      updatedGoals[category][goalKey].description = newDescription;
-      return updatedGoals;
-    });
-  };
+  // No longer needed helper functions for goal customization
 
-  // Render goal settings
-  const renderGoalSettings = () => {
-    if (!showGoalSettings) return null;
-
-    // Organize goals by their actual categories
-    const categorizedGoals = {};
-    
-    // Process each category type
-    Object.entries(goals).forEach(([mainType, typeGoals]) => {
-      Object.entries(typeGoals).forEach(([goalKey, goalData]) => {
-        const category = goalData.category;
-        
-        if (!categorizedGoals[category]) {
-          categorizedGoals[category] = [];
-        }
-        
-        categorizedGoals[category].push({
-          id: goalKey,
-          mainType,
-          ...goalData
-        });
-      });
-    });
-    
-    return (
-      <div className="mb-6 bg-gray-800 rounded-lg p-4 shadow border border-gray-700">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-semibold text-gray-100">Customize Your Goals</h3>
-          <button
-            onClick={() => setShowGoalSettings(false)}
-            className="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 text-sm text-gray-200"
-          >
-            Close
-          </button>
-        </div>
-        
-        {/* Display goals by their category */}
-        {Object.entries(categorizedGoals).map(([category, categoryGoals]) => (
-          <div key={category} className="mb-8">
-            <h4 className="font-medium text-lg mb-4 pb-2 border-b border-gray-700 text-gray-200">{category}</h4>
-            
-            <div className="space-y-4">
-              {categoryGoals.map(goal => (
-                <div key={goal.id} className="p-3 border border-gray-700 rounded bg-gray-700">
-                  <div className="mb-4">
-                    <label className="block text-sm mb-1 text-gray-300">Goal Description</label>
-                    <input
-                      type="text"
-                      value={goal.description}
-                      onChange={(e) => updateGoalDescription(
-                        goal.mainType,
-                        goal.id,
-                        e.target.value
-                      )}
-                      className="w-full px-3 py-2 bg-gray-600 border border-gray-600 rounded text-white"
-                    />
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm mb-1 text-gray-300">Target Value</label>
-                      <input 
-                        type="number" 
-                        value={goal.value} 
-                        onChange={(e) => updateGoalValue(
-                          goal.mainType, 
-                          goal.id, 
-                          Number(e.target.value)
-                        )}
-                        className="w-full px-3 py-2 bg-gray-600 border border-gray-600 rounded text-white"
-                        min="0"
-                        step={goal.id.includes("Percentage") ? "5" : "1"}
-                      />
-                    </div>
-                    
-                    {goal.targetDate !== "rolling" && (
-                      <div>
-                        <label className="block text-sm mb-1 text-gray-300">Target Date</label>
-                        <input 
-                          type="date" 
-                          value={goal.targetDate ? goal.targetDate.split('T')[0] : ""}
-                          onChange={(e) => updateGoalDate(
-                            goal.mainType, 
-                            goal.id, 
-                            e.target.value
-                          )}
-                          className="w-full px-3 py-2 bg-gray-600 border border-gray-600 rounded text-white"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-        
-        {/* Auto-refresh settings */}
-        <div className="mt-6 p-4 bg-gray-700 rounded border border-gray-600">
-          <h4 className="font-medium mb-3 text-gray-200">Auto-Refresh Settings</h4>
-          <div className="flex items-center space-x-4">
-            <label className="flex items-center text-gray-300">
-              <input 
-                type="checkbox" 
-                checked={autoRefresh} 
-                onChange={() => setAutoRefresh(!autoRefresh)}
-                className="mr-2"
-              />
-              Enable Auto-Refresh
-            </label>
-            
-            {autoRefresh && (
-              <div className="flex items-center text-gray-300">
-                <span className="mr-2">Refresh every</span>
-                <input 
-                  type="number" 
-                  value={refreshInterval} 
-                  onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                  className="w-16 px-2 py-1 bg-gray-600 border border-gray-600 rounded text-white"
-                  min="1"
-                  max="60"
-                />
-                <span className="ml-2">minutes</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
+  // Goal settings rendering removed
 
   const renderHistoricalChart = (metric, title, color = '#8884d8') => {
     try {
@@ -3025,23 +2683,9 @@ const LifeTrackerDashboard = () => {
     }
   };
 
-  // Goal Category component
-  const GoalCategory = ({ title, goals }) => {
-    // Add error handling
-    if (!goals || !Array.isArray(goals) || goals.length === 0) {
-      return null; // Don't render empty categories
-    }
-    
-    return (
-      <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
-        <h3 className="text-lg font-semibold mb-4 text-gray-200">{title || 'Goals'}</h3>
-        <div className="space-y-4">
-          {goals.map(goal => (
-            <GoalProgressBar key={goal?.id || Math.random().toString(36).substr(2, 9)} goal={goal} />
-          ))}
-        </div>
-      </div>
-    );
+  // GoalCategory component simplified to return empty div
+  const GoalCategory = () => {
+    return null;
   };
   
   // Render Strava Tab
@@ -3267,40 +2911,7 @@ const LifeTrackerDashboard = () => {
   };
   
   
-  // New component for rendering a goal progress bar
-  const GoalProgressBar = ({ goal }) => {
-    try {
-      // Handle missing goal object
-      if (!goal) {
-        console.warn("GoalProgressBar received undefined goal");
-        return null;
-      }
-      
-      // Handle different types of goals with safe defaults
-      const isRolling = goal.isRolling;
-      const progress = (!isNaN(goal.progress) && goal.progress !== null && goal.progress !== undefined) 
-        ? Math.min(100, Math.max(0, goal.progress)) 
-        : 0;
-      
-      return (
-        <div className="mb-4">
-          <div className="flex justify-between mb-1">
-            <span className="text-sm font-medium text-gray-200">{goal.description || 'No description'}</span>
-            <span className="text-sm font-medium text-gray-200">{Math.round(progress)}%</span>
-          </div>
-          <div className="w-full bg-gray-700 rounded-full h-2.5">
-            <div 
-              className={`h-2.5 rounded-full ${progress >= 100 ? 'bg-green-500' : progress >= 70 ? 'bg-blue-500' : progress >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`} 
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
-        </div>
-      );
-    } catch (error) {
-      console.error("Error rendering goal progress bar:", error);
-      return null; // Return nothing on error
-    }
-  };
+  // GoalProgressBar component removed
   
   // Health Metric Form component
   const HealthMetricForm = () => {
@@ -3754,13 +3365,7 @@ const LifeTrackerDashboard = () => {
   const renderHealthTab = () => {
     const metrics = getAllMetrics()?.health || {};
     const organizedGoals = organizeGoalsByCategory() || {};
-    const healthGoals = Object.entries(organizedGoals)
-      .filter(([category]) => category === "Strength" || category === "Climbing" || category === "Running" || 
-                            category === "Direct metrics" || category === "Sleep")
-      .reduce((acc, [category, goals]) => {
-        acc[category] = goals;
-        return acc;
-      }, {});
+    const healthGoals = {};
     
     // Group activities by type for summary
     const exerciseLoads = metrics?.health?.cardio?.exerciseLoads || [];
@@ -4064,12 +3669,7 @@ const LifeTrackerDashboard = () => {
   const renderProductivityTab = () => {
     const metrics = getAllMetrics().productivity;
     const organizedGoals = organizeGoalsByCategory();
-    const productivityGoals = Object.entries(organizedGoals)
-      .filter(([category]) => category === "Learning")
-      .reduce((acc, [category, goals]) => {
-        acc[category] = goals;
-        return acc;
-      }, {});
+    const productivityGoals = {};
     
     return (
       <>
@@ -4109,12 +3709,7 @@ const LifeTrackerDashboard = () => {
   const renderWellbeingTab = () => {
     const metrics = getAllMetrics().wellbeing;
     const organizedGoals = organizeGoalsByCategory();
-    const wellbeingGoals = Object.entries(organizedGoals)
-      .filter(([category]) => category === "Journaling" || category === "Meditation/Prayer" || category === "Do epic shit")
-      .reduce((acc, [category, goals]) => {
-        acc[category] = goals;
-        return acc;
-      }, {});
+    const wellbeingGoals = {};
     
     return (
       <>
@@ -4793,7 +4388,6 @@ const LifeTrackerDashboard = () => {
     return (
       <>
         {renderDashboardHeader()}
-        {renderGoalSettings()}
         
         {/* Latest Strava Activity section removed */}
         
@@ -4802,7 +4396,6 @@ const LifeTrackerDashboard = () => {
         {activeTab === 'wellbeing' && renderWellbeingTab()}
         {activeTab === 'health' && renderHealthTab()}
         {activeTab === 'dailylog' && renderDailyLogTab()}
-        {activeTab === 'journal' && renderJournalTab()}
         {activeTab === 'strava' && renderStravaTab()}
         {activeTab === 'database' && renderDatabaseTab()}
         
@@ -5164,7 +4757,6 @@ const LifeTrackerDashboard = () => {
       { id: 'wellbeing', label: 'Wellbeing' },
       { id: 'social', label: 'Social' },
       { id: 'dailylog', label: 'Daily Log' },
-      { id: 'journal', label: 'Journal' },
       { id: 'strava', label: 'Strava' },
       { id: 'database', label: 'Database' }
     ];
