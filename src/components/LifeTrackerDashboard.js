@@ -698,73 +698,93 @@ const DailyLogForm = () => {
   const [categories, setCategories] = useState([]);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   
-  // Load settings from Firestore
+  // Load settings from Firestore using a real-time listener
   useEffect(() => {
-    const loadDailyLogSettings = async () => {
-      if (!isAuthenticated || !auth.currentUser) return;
-      
-      setIsLoadingSettings(true);
-      
-      try {
-        // Get the settings document from Firestore
-        const settingsDoc = await getDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog'));
-        
-        if (settingsDoc.exists()) {
-          // If settings exist, use them
-          setCategories(settingsDoc.data().categories || []);
-          
-          // Initialize form data based on categories
-          const initialFormData = {};
-          
-          // Process all categories and their items to set initial values
-          settingsDoc.data().categories.forEach(category => {
-            category.items.forEach(item => {
-              // Set default values based on item type
-              switch (item.type) {
-                case 'checkbox':
-                  initialFormData[item.id] = "No";
-                  break;
-                case 'select':
-                  // Find the default (first) option
-                  if (item.options && item.options.length > 0) {
-                    initialFormData[item.id] = item.options[0].value;
-                  } else {
-                    initialFormData[item.id] = "";
-                  }
-                  break;
-                case 'number':
-                  initialFormData[item.id] = item.defaultValue || 0;
-                  break;
-                default:
-                  initialFormData[item.id] = "";
+    if (!isAuthenticated || !auth.currentUser) return;
+    
+    setIsLoadingSettings(true);
+    
+    // Set up a real-time listener on the settings document
+    const unsubscribe = onSnapshot(
+      doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog'),
+      (settingsDoc) => {
+        try {
+          if (settingsDoc.exists()) {
+            console.log("Daily log settings updated:", settingsDoc.data());
+            
+            // If settings exist, use them
+            const fetchedCategories = settingsDoc.data().categories || [];
+            setCategories(fetchedCategories);
+            
+            // Initialize form data based on categories
+            const initialFormData = {};
+            
+            // Process all categories and their items to set initial values
+            fetchedCategories.forEach(category => {
+              if (!category.items || !Array.isArray(category.items)) {
+                console.warn(`Category ${category.id} has no items or items is not an array`, category);
+                return;
               }
+              
+              category.items.forEach(item => {
+                if (!item || !item.id) {
+                  console.warn("Invalid item found in category", category.id);
+                  return;
+                }
+                
+                // Set default values based on item type
+                switch (item.type) {
+                  case 'checkbox':
+                    initialFormData[item.id] = "No";
+                    break;
+                  case 'select':
+                    // Find the default (first) option
+                    if (item.options && item.options.length > 0) {
+                      initialFormData[item.id] = item.options[0].value;
+                    } else {
+                      initialFormData[item.id] = "";
+                    }
+                    break;
+                  case 'number':
+                    initialFormData[item.id] = item.defaultValue || 0;
+                    break;
+                  default:
+                    initialFormData[item.id] = "";
+                }
+              });
             });
-          });
-          
-          // Initialize the form with these default values
-          setFormData(initialFormData);
-          
-          // Initialize expanded sections state
-          const initialExpandedSections = {};
-          settingsDoc.data().categories.forEach(category => {
-            initialExpandedSections[category.id] = false;
-          });
-          setExpandedSections(initialExpandedSections);
-          
-        } else {
-          // If no settings exist, show a message or redirect to settings
-          console.log("No daily log settings found. Using defaults.");
-          // Here you could redirect to settings page
+            
+            // Initialize the form with these default values
+            setFormData(initialFormData);
+            
+            // Initialize expanded sections state
+            const initialExpandedSections = {};
+            fetchedCategories.forEach(category => {
+              initialExpandedSections[category.id] = false;
+            });
+            setExpandedSections(initialExpandedSections);
+            
+            setIsLoadingSettings(false);
+          } else {
+            // If no settings exist, show a message or redirect to settings
+            console.log("No daily log settings found. Using defaults.");
+            setIsLoadingSettings(false);
+          }
+        } catch (error) {
+          console.error("Error processing daily log settings:", error);
+          setError(`Error loading daily log form: ${error.message}`);
+          setIsLoadingSettings(false);
         }
-      } catch (error) {
-        console.error("Error loading daily log settings:", error);
-        setError(`Error loading daily log form: ${error.message}`);
-      } finally {
+      },
+      (error) => {
+        console.error("Error listening to daily log settings:", error);
+        setError(`Error watching daily log settings: ${error.message}`);
         setIsLoadingSettings(false);
       }
-    };
+    );
     
-    loadDailyLogSettings();
+    // Clean up listener on unmount
+    return () => unsubscribe();
   }, [isAuthenticated, auth.currentUser]);
   
   const handleChange = (e) => {
@@ -3539,13 +3559,14 @@ const DailyLogForm = () => {
   };
 
 
-// DailyLogSettings component
+// Step 4: Create the DailyLogSettings component
 const DailyLogSettings = () => {
   // State for managing categories and items
   const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   
@@ -3558,6 +3579,20 @@ const DailyLogSettings = () => {
     type: 'checkbox'
   });
   
+  // Clear success message after a delay
+  useEffect(() => {
+    let timeoutId;
+    if (successMessage) {
+      timeoutId = setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+    }
+    
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [successMessage]);
+  
   // Fetch categories from Firestore on component mount
   useEffect(() => {
     fetchDailyLogSettings();
@@ -3565,18 +3600,30 @@ const DailyLogSettings = () => {
   
   // Fetch daily log settings from Firestore
   const fetchDailyLogSettings = async () => {
-    if (!isAuthenticated || !auth.currentUser) return;
+    if (!isAuthenticated || !auth.currentUser) {
+      console.log("Not authenticated or no current user");
+      return;
+    }
     
     setIsLoading(true);
+    console.log("Fetching daily log settings...");
     
     try {
+      // Get the settings document reference
+      const settingsRef = doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog');
+      console.log("Settings doc path:", settingsRef.path);
+      
       // Get the settings document from Firestore
-      const settingsDoc = await getDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog'));
+      const settingsDoc = await getDoc(settingsRef);
       
       if (settingsDoc.exists()) {
         // If settings already exist, use them
-        setCategories(settingsDoc.data().categories || []);
+        console.log("Settings document exists:", settingsDoc.data());
+        const categoriesData = settingsDoc.data().categories || [];
+        console.log(`Found ${categoriesData.length} categories`);
+        setCategories(categoriesData);
       } else {
+        console.log("No settings document exists, creating default settings");
         // If no settings exist, create default categories based on current hard-coded form
         const defaultCategories = [
           {
@@ -3720,17 +3767,34 @@ const DailyLogSettings = () => {
   };
   
   // Save categories to Firestore
-  const saveCategories = async () => {
-    if (!isAuthenticated || !auth.currentUser) return;
+  const saveCategories = async (updatedCategories = null) => {
+    if (!isAuthenticated || !auth.currentUser) {
+      setError("You must be signed in to save settings");
+      return;
+    }
     
     setIsSaving(true);
     
     try {
-      await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog'), {
-        categories: categories
-      });
+      // Use provided categories or current state
+      const categoriesToSave = updatedCategories || categories;
       
+      console.log("Saving categories to Firestore:", categoriesToSave);
+      
+      // Use merge option to ensure we only update the categories field
+      await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog'), {
+        categories: categoriesToSave,
+        lastUpdated: Timestamp.now()
+      }, { merge: true });
+      
+      console.log("Settings saved successfully");
+      setSuccessMessage("Settings saved successfully");
       setError(null);
+      
+      // If we were passed updated categories, update our state
+      if (updatedCategories) {
+        setCategories(updatedCategories);
+      }
     } catch (error) {
       console.error("Error saving daily log settings:", error);
       setError(`Error saving settings: ${error.message}`);
@@ -3740,7 +3804,7 @@ const DailyLogSettings = () => {
   };
   
   // Handle adding a new category
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     if (!newCategoryName.trim()) {
       setError("Category name cannot be empty");
       return;
@@ -3761,27 +3825,28 @@ const DailyLogSettings = () => {
       items: []
     };
     
-    setCategories([...categories, newCategory]);
+    const updatedCategories = [...categories, newCategory];
+    setCategories(updatedCategories);
     setNewCategoryName('');
     setShowAddCategory(false);
     
-    // Save changes to Firestore
-    saveCategories();
+    // Save changes to Firestore immediately
+    await saveCategories(updatedCategories);
   };
   
   // Handle deleting a category
-  const handleDeleteCategory = (categoryId) => {
+  const handleDeleteCategory = async (categoryId) => {
     if (window.confirm("Are you sure you want to delete this category? All items in this category will be removed from your daily log.")) {
       const updatedCategories = categories.filter(category => category.id !== categoryId);
       setCategories(updatedCategories);
       
-      // Save changes to Firestore
-      saveCategories();
+      // Save changes to Firestore immediately
+      await saveCategories(updatedCategories);
     }
   };
   
   // Handle changing category color
-  const handleCategoryColorChange = (categoryId, newColor) => {
+  const handleCategoryColorChange = async (categoryId, newColor) => {
     const updatedCategories = categories.map(category => {
       if (category.id === categoryId) {
         return { ...category, color: newColor };
@@ -3791,12 +3856,12 @@ const DailyLogSettings = () => {
     
     setCategories(updatedCategories);
     
-    // Save changes to Firestore
-    saveCategories();
+    // Save changes to Firestore immediately
+    await saveCategories(updatedCategories);
   };
   
   // Handle adding a new item to a category
-  const handleAddItem = (categoryId) => {
+  const handleAddItem = async (categoryId) => {
     if (!newItemData.label.trim()) {
       setError("Item label cannot be empty");
       return;
@@ -3805,11 +3870,13 @@ const DailyLogSettings = () => {
     // Generate item ID from label
     const itemId = newItemData.label.toLowerCase().replace(/\s+/g, '_');
     
+    let errorFound = false;
     const updatedCategories = categories.map(category => {
       if (category.id === categoryId) {
         // Check if item with similar ID already exists
         if (category.items.some(item => item.id === itemId)) {
           setError("An item with a similar name already exists in this category");
+          errorFound = true;
           return category;
         }
         
@@ -3821,17 +3888,23 @@ const DailyLogSettings = () => {
       return category;
     });
     
+    if (errorFound) return;
+    
     setCategories(updatedCategories);
     setNewItemData({ id: '', label: '', type: 'checkbox' });
     setShowAddItem(null);
     setError(null);
     
-    // Save changes to Firestore
-    saveCategories();
+    // Save changes to Firestore immediately
+    await saveCategories(updatedCategories);
   };
   
   // Handle deleting an item
-  const handleDeleteItem = (categoryId, itemId) => {
+  const handleDeleteItem = async (categoryId, itemId) => {
+    if (!window.confirm("Are you sure you want to delete this item?")) {
+      return;
+    }
+    
     const updatedCategories = categories.map(category => {
       if (category.id === categoryId) {
         return {
@@ -3844,12 +3917,12 @@ const DailyLogSettings = () => {
     
     setCategories(updatedCategories);
     
-    // Save changes to Firestore
-    saveCategories();
+    // Save changes to Firestore immediately
+    await saveCategories(updatedCategories);
   };
   
   // Handle editing an item
-  const handleEditItem = (categoryId, itemId, updatedItem) => {
+  const handleEditItem = async (categoryId, itemId, updatedItem) => {
     const updatedCategories = categories.map(category => {
       if (category.id === categoryId) {
         return {
@@ -3867,8 +3940,8 @@ const DailyLogSettings = () => {
     
     setCategories(updatedCategories);
     
-    // Save changes to Firestore
-    saveCategories();
+    // Save changes to Firestore immediately
+    await saveCategories(updatedCategories);
   };
   
   if (isLoading) {
@@ -3883,8 +3956,33 @@ const DailyLogSettings = () => {
   return (
     <div className="space-y-6">
       {error && (
-        <div className="bg-red-900 text-red-200 p-3 rounded-md mb-4">
-          {error}
+        <div className="bg-red-900 text-red-200 p-3 rounded-md mb-4 flex justify-between items-center">
+          <div>{error}</div>
+          <button 
+            onClick={() => setError(null)} 
+            className="text-red-200 hover:text-white"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      
+      {successMessage && (
+        <div className="bg-green-900 text-green-200 p-3 rounded-md mb-4 flex justify-between items-center">
+          <div>{successMessage}</div>
+          <button 
+            onClick={() => setSuccessMessage(null)} 
+            className="text-green-200 hover:text-white"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      
+      {isSaving && (
+        <div className="bg-blue-900 text-blue-200 p-3 rounded-md mb-4 flex items-center">
+          <div className="mr-3 h-4 w-4 animate-spin rounded-full border-2 border-solid border-blue-200 border-r-transparent"></div>
+          <div>Saving changes...</div>
         </div>
       )}
       
