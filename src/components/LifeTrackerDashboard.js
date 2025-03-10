@@ -686,791 +686,339 @@ const LifeTrackerDashboard = () => {
     );
   };
   
-  // New component for creating a daily log entry
-  const DailyLogForm = () => {
-    // Default form state with common fields
-    const [formData, setFormData] = useState({
-      // Basic Fields
-      // Social Fields
-      talked_on_phone_friend: "No",
-      talked_on_phone_family: "No",
-      talked_on_phone_new: "No",
-      texted_friend: "No",
-      texted_family: "No",
-      texted_new: "No",
-      made_plans_friend: "No",
-      made_plans_family: "No",
-      made_plans_new: "No",
-      hung_out_friend: "No",
-      hung_out_family: "No",
-      hung_out_new: "No",
-      kat_smile: "No",
-      kat_nice: "No",
-      kat_review: "No",
-      kat_meaningful: "No",
+// Modify the DailyLogForm component to use dynamically loaded settings
+const DailyLogForm = () => {
+  // State for form data - now empty by default
+  const [formData, setFormData] = useState({});
+  
+  // State for tracking if sections are expanded
+  const [expandedSections, setExpandedSections] = useState({});
+  
+  // State for daily log settings
+  const [categories, setCategories] = useState([]);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  
+  // Load settings from Firestore
+  useEffect(() => {
+    const loadDailyLogSettings = async () => {
+      if (!isAuthenticated || !auth.currentUser) return;
       
-      // Wellbeing Fields
-      morning_journal: "No",
-      evening_journal: "No",
-      meditation: "No",
-      epic_activity: "No",
-      epic_rating: 3,
-      vibes: 5,
+      setIsLoadingSettings(true);
       
-      // Productivity Fields
-      focused_time: "0",
-      reading_time: "0",
-      internet_time: "0",
-      
-      // Health Fields
-      cardio: "No",
-      strength: "No",
-      bed_on_time: "No",
-      up_on_time: "No",
-      
-      // Exercise Fields
-      miles: 0,
-      duration: 30,
-      heart_rate: 130,
-      activity_type: "running",
-      
-      // Numeric Fields
-      pushups: 0,
-      rows: 0,
-      situps: 0,
-      squats: 0
+      try {
+        // Get the settings document from Firestore
+        const settingsDoc = await getDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog'));
+        
+        if (settingsDoc.exists()) {
+          // If settings exist, use them
+          setCategories(settingsDoc.data().categories || []);
+          
+          // Initialize form data based on categories
+          const initialFormData = {};
+          
+          // Process all categories and their items to set initial values
+          settingsDoc.data().categories.forEach(category => {
+            category.items.forEach(item => {
+              // Set default values based on item type
+              switch (item.type) {
+                case 'checkbox':
+                  initialFormData[item.id] = "No";
+                  break;
+                case 'select':
+                  // Find the default (first) option
+                  if (item.options && item.options.length > 0) {
+                    initialFormData[item.id] = item.options[0].value;
+                  } else {
+                    initialFormData[item.id] = "";
+                  }
+                  break;
+                case 'number':
+                  initialFormData[item.id] = item.defaultValue || 0;
+                  break;
+                default:
+                  initialFormData[item.id] = "";
+              }
+            });
+          });
+          
+          // Initialize the form with these default values
+          setFormData(initialFormData);
+          
+          // Initialize expanded sections state
+          const initialExpandedSections = {};
+          settingsDoc.data().categories.forEach(category => {
+            initialExpandedSections[category.id] = false;
+          });
+          setExpandedSections(initialExpandedSections);
+          
+        } else {
+          // If no settings exist, show a message or redirect to settings
+          console.log("No daily log settings found. Using defaults.");
+          // Here you could redirect to settings page
+        }
+      } catch (error) {
+        console.error("Error loading daily log settings:", error);
+        setError(`Error loading daily log form: ${error.message}`);
+      } finally {
+        setIsLoadingSettings(false);
+      }
+    };
+    
+    loadDailyLogSettings();
+  }, [isAuthenticated, auth.currentUser]);
+  
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (checked ? "Yes" : "No") : value
+    }));
+  };
+  
+  const handleExpandSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await addDailyLog(formData);
+    
+    // Reset form after submission - get defaults from settings again
+    const resetData = {};
+    categories.forEach(category => {
+      category.items.forEach(item => {
+        switch (item.type) {
+          case 'checkbox':
+            resetData[item.id] = "No";
+            break;
+          case 'select':
+            if (item.options && item.options.length > 0) {
+              resetData[item.id] = item.options[0].value;
+            } else {
+              resetData[item.id] = "";
+            }
+            break;
+          case 'number':
+            resetData[item.id] = item.defaultValue || 0;
+            break;
+          default:
+            resetData[item.id] = "";
+        }
+      });
     });
     
-    // State for tracking if sections are expanded
-    const [expandedSections, setExpandedSections] = useState({
-      talked_on_phone: false,
-      texted: false,
-      made_plans: false,
-      hung_out: false,
-      kat: false
+    setFormData(resetData);
+    
+    // Reset expanded sections
+    const resetExpandedSections = {};
+    categories.forEach(category => {
+      resetExpandedSections[category.id] = false;
     });
+    setExpandedSections(resetExpandedSections);
+  };
+  
+  // Function to check if a field should be visible (for conditional fields)
+  const isFieldVisible = (item) => {
+    if (!item.conditionalOn) return true;
     
-    const handleChange = (e) => {
-      const { name, value, type, checked } = e.target;
-      setFormData(prev => ({
-        ...prev,
-        [name]: type === 'checkbox' ? (checked ? "Yes" : "No") : value
-      }));
-    };
-    
-    const handleExpandSection = (section) => {
-      setExpandedSections(prev => ({
-        ...prev,
-        [section]: !prev[section]
-      }));
-    };
-    
-    const handleSubmit = async (e) => {
-      e.preventDefault();
-      await addDailyLog(formData);
-      // Reset form after submission
-      setFormData({
-        // Social Fields
-        talked_on_phone_friend: "No",
-        talked_on_phone_family: "No",
-        talked_on_phone_new: "No",
-        texted_friend: "No",
-        texted_family: "No",
-        texted_new: "No",
-        made_plans_friend: "No",
-        made_plans_family: "No",
-        made_plans_new: "No",
-        hung_out_friend: "No",
-        hung_out_family: "No",
-        hung_out_new: "No",
-        kat_smile: "No",
-        kat_nice: "No",
-        kat_review: "No",
-        kat_meaningful: "No",
+    // Check if the parent field has the value that triggers this field
+    return formData[item.conditionalOn] === "Yes";
+  };
+  
+  // Render form field based on type
+  const renderFormField = (item, categoryColor) => {
+    switch (item.type) {
+      case 'checkbox':
+        return (
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id={item.id}
+              name={item.id}
+              checked={formData[item.id] === "Yes"}
+              onChange={handleChange}
+              className="mr-2"
+            />
+            <label htmlFor={item.id} className="text-gray-200">{item.label}</label>
+          </div>
+        );
         
-        // Wellbeing Fields
-        morning_journal: "No",
-        evening_journal: "No",
-        meditation: "No",
-        epic_activity: "No",
-        epic_rating: 3,
-        vibes: 5,
+      case 'select':
+        return (
+          <div>
+            <label htmlFor={item.id} className="block mb-1 text-gray-200">{item.label}</label>
+            <select
+              id={item.id}
+              name={item.id}
+              value={formData[item.id] || ""}
+              onChange={handleChange}
+              className={`w-full p-2 bg-gray-700 border border-gray-600 rounded text-white`}
+            >
+              {item.options && item.options.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
         
-        // Productivity Fields
-        focused_time: "0",
-        reading_time: "0",
-        internet_time: "0",
+      case 'number':
+        return (
+          <div>
+            <label htmlFor={item.id} className="block mb-1 text-gray-200">{item.label}</label>
+            <input
+              type="number"
+              id={item.id}
+              name={item.id}
+              value={formData[item.id] || ""}
+              onChange={handleChange}
+              min={item.min || 0}
+              step={item.step || 1}
+              className={`w-full p-2 bg-gray-700 border border-gray-600 rounded text-white`}
+            />
+          </div>
+        );
         
-        // Health Fields
-        cardio: "No",
-        strength: "No",
-        bed_on_time: "No",
-        up_on_time: "No",
+      case 'text':
+        return (
+          <div>
+            <label htmlFor={item.id} className="block mb-1 text-gray-200">{item.label}</label>
+            <input
+              type="text"
+              id={item.id}
+              name={item.id}
+              value={formData[item.id] || ""}
+              onChange={handleChange}
+              className={`w-full p-2 bg-gray-700 border border-gray-600 rounded text-white`}
+            />
+          </div>
+        );
         
-        // Exercise Fields
-        miles: 0,
-        duration: 30,
-        heart_rate: 130,
-        activity_type: "running",
-        
-        // Numeric Fields
-        pushups: 0,
-        rows: 0,
-        situps: 0,
-        squats: 0
-      });
-      
-      // Reset expanded sections
-      setExpandedSections({
-        talked_on_phone: false,
-        texted: false,
-        made_plans: false,
-        hung_out: false,
-        kat: false
-      });
-    };
-    
+      default:
+        return (
+          <div className="text-yellow-400">
+            Unknown field type: {item.type}
+          </div>
+        );
+    }
+  };
+  
+  if (isLoadingSettings) {
     return (
       <div className="bg-gray-800 p-6 rounded-lg shadow-md mb-6 border border-gray-700">
-        <h3 className="text-xl font-semibold mb-4 text-gray-100">Add Daily Log Entry</h3>
-        <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Social Section */}
-            <div className="bg-blue-900 p-4 rounded-md border border-blue-800">
-              <h4 className="font-medium text-blue-100 mb-3">Social</h4>
-              
-              <div className="space-y-4">
-                {/* Talked on the phone category */}
-                <div className="border-b border-blue-800 pb-2">
-                  <button 
-                    type="button"
-                    onClick={() => handleExpandSection('talked_on_phone')}
-                    className="flex items-center justify-between w-full text-left text-gray-200 hover:text-white focus:outline-none"
-                  >
-                    <span>Talked on the phone with:</span>
-                    <span className="text-lg">{expandedSections.talked_on_phone ? '−' : '+'}</span>
-                  </button>
-                  
-                  {expandedSections.talked_on_phone && (
-                    <div className="mt-2 ml-4 space-y-2">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="talked_on_phone_friend"
-                          name="talked_on_phone_friend"
-                          checked={formData.talked_on_phone_friend === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="talked_on_phone_friend" className="text-gray-200">Friend</label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="talked_on_phone_family"
-                          name="talked_on_phone_family"
-                          checked={formData.talked_on_phone_family === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="talked_on_phone_family" className="text-gray-200">Family</label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="talked_on_phone_new"
-                          name="talked_on_phone_new"
-                          checked={formData.talked_on_phone_new === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="talked_on_phone_new" className="text-gray-200">Someone new</label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Texted category */}
-                <div className="border-b border-blue-800 pb-2">
-                  <button 
-                    type="button"
-                    onClick={() => handleExpandSection('texted')}
-                    className="flex items-center justify-between w-full text-left text-gray-200 hover:text-white focus:outline-none"
-                  >
-                    <span>Texted with:</span>
-                    <span className="text-lg">{expandedSections.texted ? '−' : '+'}</span>
-                  </button>
-                  
-                  {expandedSections.texted && (
-                    <div className="mt-2 ml-4 space-y-2">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="texted_friend"
-                          name="texted_friend"
-                          checked={formData.texted_friend === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="texted_friend" className="text-gray-200">Friend</label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="texted_family"
-                          name="texted_family"
-                          checked={formData.texted_family === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="texted_family" className="text-gray-200">Family</label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="texted_new"
-                          name="texted_new"
-                          checked={formData.texted_new === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="texted_new" className="text-gray-200">Someone new</label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Made plans category */}
-                <div className="border-b border-blue-800 pb-2">
-                  <button 
-                    type="button"
-                    onClick={() => handleExpandSection('made_plans')}
-                    className="flex items-center justify-between w-full text-left text-gray-200 hover:text-white focus:outline-none"
-                  >
-                    <span>Made plans with:</span>
-                    <span className="text-lg">{expandedSections.made_plans ? '−' : '+'}</span>
-                  </button>
-                  
-                  {expandedSections.made_plans && (
-                    <div className="mt-2 ml-4 space-y-2">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="made_plans_friend"
-                          name="made_plans_friend"
-                          checked={formData.made_plans_friend === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="made_plans_friend" className="text-gray-200">Friend</label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="made_plans_family"
-                          name="made_plans_family"
-                          checked={formData.made_plans_family === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="made_plans_family" className="text-gray-200">Family</label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="made_plans_new"
-                          name="made_plans_new"
-                          checked={formData.made_plans_new === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="made_plans_new" className="text-gray-200">Someone new</label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Hung out category */}
-                <div className="border-b border-blue-800 pb-2">
-                  <button 
-                    type="button"
-                    onClick={() => handleExpandSection('hung_out')}
-                    className="flex items-center justify-between w-full text-left text-gray-200 hover:text-white focus:outline-none"
-                  >
-                    <span>Hung out with:</span>
-                    <span className="text-lg">{expandedSections.hung_out ? '−' : '+'}</span>
-                  </button>
-                  
-                  {expandedSections.hung_out && (
-                    <div className="mt-2 ml-4 space-y-2">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="hung_out_friend"
-                          name="hung_out_friend"
-                          checked={formData.hung_out_friend === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="hung_out_friend" className="text-gray-200">Friend</label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="hung_out_family"
-                          name="hung_out_family"
-                          checked={formData.hung_out_family === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="hung_out_family" className="text-gray-200">Family</label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="hung_out_new"
-                          name="hung_out_new"
-                          checked={formData.hung_out_new === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="hung_out_new" className="text-gray-200">Someone new</label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Kat category */}
-                <div className="border-b border-blue-800 pb-2">
-                  <button 
-                    type="button"
-                    onClick={() => handleExpandSection('kat')}
-                    className="flex items-center justify-between w-full text-left text-gray-200 hover:text-white focus:outline-none"
-                  >
-                    <span>Kat:</span>
-                    <span className="text-lg">{expandedSections.kat ? '−' : '+'}</span>
-                  </button>
-                  
-                  {expandedSections.kat && (
-                    <div className="mt-2 ml-4 space-y-2">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="kat_smile"
-                          name="kat_smile"
-                          checked={formData.kat_smile === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="kat_smile" className="text-gray-200">Made her smile</label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="kat_nice"
-                          name="kat_nice"
-                          checked={formData.kat_nice === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="kat_nice" className="text-gray-200">Did something nice for her</label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="kat_meaningful"
-                          name="kat_meaningful"
-                          checked={formData.kat_meaningful === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="kat_meaningful" className="text-gray-200">Hung out meaningfully</label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          id="kat_review"
-                          name="kat_review"
-                          checked={formData.kat_review === "Yes"}
-                          onChange={handleChange}
-                          className="mr-2"
-                        />
-                        <label htmlFor="kat_review" className="text-gray-200">Did review with her</label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            {/* Wellbeing Section */}
-            <div className="bg-purple-900 p-4 rounded-md border border-purple-800">
-              <h4 className="font-medium text-purple-100 mb-3">Wellbeing</h4>
-              
-              <div className="space-y-3">
-                <div>
-                  <label htmlFor="vibes" className="block mb-1 text-gray-200">Overall Vibes (0-10)</label>
-                  <select
-                    id="vibes"
-                    name="vibes"
-                    value={formData.vibes}
-                    onChange={handleChange}
-                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                  >
-                    <option value="0">0 - Terrible</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5 - Average</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9</option>
-                    <option value="10">10 - Amazing</option>
-                  </select>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="morning_journal"
-                    name="morning_journal"
-                    checked={formData.morning_journal === "Yes"}
-                    onChange={handleChange}
-                    className="mr-2"
-                  />
-                  <label htmlFor="morning_journal" className="text-gray-200">Morning Journal</label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="evening_journal"
-                    name="evening_journal"
-                    checked={formData.evening_journal === "Yes"}
-                    onChange={handleChange}
-                    className="mr-2"
-                  />
-                  <label htmlFor="evening_journal" className="text-gray-200">Evening Journal</label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="meditation"
-                    name="meditation"
-                    checked={formData.meditation === "Yes"}
-                    onChange={handleChange}
-                    className="mr-2"
-                  />
-                  <label htmlFor="meditation" className="text-gray-200">Meditation/Prayer</label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="epic_activity"
-                    name="epic_activity"
-                    checked={formData.epic_activity === "Yes"}
-                    onChange={handleChange}
-                    className="mr-2"
-                  />
-                  <label htmlFor="epic_activity" className="text-gray-200">Did something epic</label>
-                </div>
-                
-                {formData.epic_activity === "Yes" && (
-                  <div>
-                    <label htmlFor="epic_rating" className="block mb-1 text-gray-200">How epic? (1-5)</label>
-                    <select
-                      id="epic_rating"
-                      name="epic_rating"
-                      value={formData.epic_rating}
-                      onChange={handleChange}
-                      className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                    >
-                      <option value="1">1 - Somewhat epic</option>
-                      <option value="2">2</option>
-                      <option value="3">3 - Pretty epic</option>
-                      <option value="4">4</option>
-                      <option value="5">5 - Legendary</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            {/* Health Section */}
-            <div className="bg-green-900 p-4 rounded-md border border-green-800">
-              <h4 className="font-medium text-green-100 mb-3">Health</h4>
-              
-              <div className="space-y-3">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="cardio"
-                    name="cardio"
-                    checked={formData.cardio === "Yes"}
-                    onChange={handleChange}
-                    className="mr-2"
-                  />
-                  <label htmlFor="cardio" className="text-gray-200">Did cardio today</label>
-                </div>
-                
-                {formData.cardio === "Yes" && (
-                  <div className="space-y-3">
-                    <div>
-                      <label htmlFor="miles" className="block mb-1 text-gray-200">Miles</label>
-                      <input
-                        type="number"
-                        id="miles"
-                        name="miles"
-                        step="0.1"
-                        min="0"
-                        value={formData.miles}
-                        onChange={handleChange}
-                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="duration" className="block mb-1 text-gray-200">Duration (minutes)</label>
-                      <input
-                        type="number"
-                        id="duration"
-                        name="duration"
-                        step="1"
-                        min="0"
-                        value={formData.duration || ""}
-                        onChange={handleChange}
-                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="heart_rate" className="block mb-1 text-gray-200">Avg Heart Rate (BPM)</label>
-                      <input
-                        type="number"
-                        id="heart_rate"
-                        name="heart_rate"
-                        step="1"
-                        min="0"
-                        value={formData.heart_rate || ""}
-                        onChange={handleChange}
-                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="activity_type" className="block mb-1 text-gray-200">Activity Type</label>
-                      <select
-                        id="activity_type"
-                        name="activity_type"
-                        value={formData.activity_type || "running"}
-                        onChange={handleChange}
-                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                      >
-                        <option value="running">Running</option>
-                        <option value="walking">Walking</option>
-                        <option value="cycling">Cycling</option>
-                        <option value="swimming">Swimming</option>
-                        <option value="hiking">Hiking</option>
-                        <option value="climbing">Climbing</option>
-                        <option value="weightlifting">Weightlifting</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="strength"
-                    name="strength"
-                    checked={formData.strength === "Yes"}
-                    onChange={handleChange}
-                    className="mr-2"
-                  />
-                  <label htmlFor="strength" className="text-gray-200">Did strength training</label>
-                </div>
-                
-                {formData.strength === "Yes" && (
-                  <div className="space-y-2">
-                    <div>
-                      <label htmlFor="pushups" className="block mb-1 text-gray-200">Pushups</label>
-                      <input
-                        type="number"
-                        id="pushups"
-                        name="pushups"
-                        min="0"
-                        value={formData.pushups}
-                        onChange={handleChange}
-                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label htmlFor="rows" className="block mb-1 text-gray-200">Rows</label>
-                      <input
-                        type="number"
-                        id="rows"
-                        name="rows"
-                        min="0"
-                        value={formData.rows}
-                        onChange={handleChange}
-                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label htmlFor="situps" className="block mb-1 text-gray-200">Situps</label>
-                      <input
-                        type="number"
-                        id="situps"
-                        name="situps"
-                        min="0"
-                        value={formData.situps}
-                        onChange={handleChange}
-                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label htmlFor="squats" className="block mb-1 text-gray-200">Squats</label>
-                      <input
-                        type="number"
-                        id="squats"
-                        name="squats"
-                        min="0"
-                        value={formData.squats}
-                        onChange={handleChange}
-                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                      />
-                    </div>
-                  </div>
-                )}
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="bed_on_time"
-                    name="bed_on_time"
-                    checked={formData.bed_on_time === "Yes"}
-                    onChange={handleChange}
-                    className="mr-2"
-                  />
-                  <label htmlFor="bed_on_time" className="text-gray-200">Bed on time</label>
-                </div>
-                
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="up_on_time"
-                    name="up_on_time"
-                    checked={formData.up_on_time === "Yes"}
-                    onChange={handleChange}
-                    className="mr-2"
-                  />
-                  <label htmlFor="up_on_time" className="text-gray-200">Up on time</label>
-                </div>
-              </div>
-            </div>
-            
-            {/* Productivity Section */}
-            <div className="bg-amber-900 p-4 rounded-md border border-amber-800">
-              <h4 className="font-medium text-amber-100 mb-3">Productivity</h4>
-              
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="focused_time" className="block mb-1 text-gray-200">Focused Productive Time</label>
-                  <select
-                    id="focused_time"
-                    name="focused_time"
-                    value={formData.focused_time}
-                    onChange={handleChange}
-                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                  >
-                    <option value="0">None</option>
-                    <option value="15">15 minutes</option>
-                    <option value="30">30 minutes</option>
-                    <option value="45">45 minutes</option>
-                    <option value="60">1 hour</option>
-                    <option value="90">1.5 hours</option>
-                    <option value="120">2 hours</option>
-                    <option value="180">3 hours</option>
-                    <option value="240">4 hours</option>
-                    <option value="300">5 hours</option>
-                    <option value="360">6+ hours</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label htmlFor="reading_time" className="block mb-1 text-gray-200">Reading Time</label>
-                  <select
-                    id="reading_time"
-                    name="reading_time"
-                    value={formData.reading_time}
-                    onChange={handleChange}
-                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                  >
-                    <option value="0">None</option>
-                    <option value="15">15 minutes</option>
-                    <option value="30">30 minutes</option>
-                    <option value="45">45 minutes</option>
-                    <option value="60">1 hour</option>
-                    <option value="90">1.5 hours</option>
-                    <option value="120">2 hours</option>
-                    <option value="180">3+ hours</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label htmlFor="internet_time" className="block mb-1 text-gray-200">Mindless Internet Use</label>
-                  <select
-                    id="internet_time"
-                    name="internet_time"
-                    value={formData.internet_time}
-                    onChange={handleChange}
-                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
-                  >
-                    <option value="0">None</option>
-                    <option value="15">15 minutes</option>
-                    <option value="30">30 minutes</option>
-                    <option value="45">45 minutes</option>
-                    <option value="60">1 hour</option>
-                    <option value="90">1.5 hours</option>
-                    <option value="120">2 hours</option>
-                    <option value="180">3 hours</option>
-                    <option value="240">4+ hours</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="mt-6 text-center">
-            <button 
-              type="submit" 
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              disabled={isLoading}
-            >
-              {isLoading ? "Saving..." : "Save Daily Log"}
-            </button>
-          </div>
-        </form>
+        <h3 className="text-xl font-semibold mb-4 text-gray-100">Loading Daily Log Form...</h3>
+        <div className="flex justify-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-400 border-r-transparent"></div>
+        </div>
       </div>
     );
-  };
-
+  }
+  
+  if (categories.length === 0) {
+    return (
+      <div className="bg-gray-800 p-6 rounded-lg shadow-md mb-6 border border-gray-700">
+        <h3 className="text-xl font-semibold mb-4 text-gray-100">Daily Log Setup Required</h3>
+        <p className="text-gray-300 mb-4">
+          It looks like your daily log items haven't been set up yet.
+        </p>
+        <button
+          onClick={() => setActiveTab('settings')}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+        >
+          Go to Settings
+        </button>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="bg-gray-800 p-6 rounded-lg shadow-md mb-6 border border-gray-700">
+      <h3 className="text-xl font-semibold mb-4 text-gray-100">Add Daily Log Entry</h3>
+      <form onSubmit={handleSubmit}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Render each category */}
+          {categories.map(category => (
+            <div key={category.id} className={`bg-${category.color}-900 p-4 rounded-md border border-${category.color}-800`}>
+              <h4 className={`font-medium text-${category.color}-100 mb-3`}>{category.name}</h4>
+              
+              <div className="space-y-4">
+                {/* Group items that should be nested under an expandable section */}
+                {category.items
+                  .filter(item => !item.conditionalOn)
+                  .map(item => {
+                    // Check if this item has children (conditional items)
+                    const hasChildren = category.items.some(childItem => 
+                      childItem.conditionalOn === item.id
+                    );
+                    
+                    // If this is a potential parent with a checkbox type
+                    if (hasChildren && item.type === 'checkbox') {
+                      return (
+                        <div key={item.id} className={`border-b border-${category.color}-800 pb-2`}>
+                          {/* Render the parent item */}
+                          <div className="flex items-center">
+                            <input
+                              type="checkbox"
+                              id={item.id}
+                              name={item.id}
+                              checked={formData[item.id] === "Yes"}
+                              onChange={handleChange}
+                              className="mr-2"
+                            />
+                            <label htmlFor={item.id} className="text-gray-200">{item.label}</label>
+                          </div>
+                          
+                          {/* Render children when parent is checked */}
+                          {formData[item.id] === "Yes" && (
+                            <div className="mt-3 ml-6 space-y-3">
+                              {category.items
+                                .filter(childItem => childItem.conditionalOn === item.id)
+                                .map(childItem => (
+                                  <div key={childItem.id}>
+                                    {renderFormField(childItem, category.color)}
+                                  </div>
+                                ))
+                              }
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    
+                    // For other non-parent, non-conditional items
+                    if (!item.conditionalOn) {
+                      return (
+                        <div key={item.id} className="mb-3">
+                          {renderFormField(item, category.color)}
+                        </div>
+                      );
+                    }
+                    
+                    return null; // Skip conditional items that will be rendered with their parents
+                  })
+                }
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        <div className="mt-6 text-center">
+          <button 
+            type="submit" 
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            disabled={isLoading}
+          >
+            {isLoading ? "Saving..." : "Save Daily Log"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
   // Fetch data from Firestore
   const fetchFirestoreData = async () => {
     if (!isAuthenticated || !auth.currentUser) {
@@ -3973,6 +3521,569 @@ const LifeTrackerDashboard = () => {
     );
   };
 
+  const renderSettingsTab = () => {
+    return (
+      <div className="p-4">
+        <h2 className="text-2xl font-bold mb-6 text-gray-100">Settings</h2>
+        
+        <div className="mb-8">
+          <h3 className="text-xl font-semibold mb-4 text-gray-200">Daily Log Items</h3>
+          <p className="mb-4 text-gray-400">
+            Customize the items that appear in your daily log form. Changes will be saved to your account.
+          </p>
+          
+          <DailyLogSettings />
+        </div>
+      </div>
+    );
+  };
+
+
+// DailyLogSettings component
+const DailyLogSettings = () => {
+  // State for managing categories and items
+  const [categories, setCategories] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  
+  // State for tracking which category is currently being edited
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [showAddItem, setShowAddItem] = useState(null);
+  const [newItemData, setNewItemData] = useState({
+    id: '',
+    label: '',
+    type: 'checkbox'
+  });
+  
+  // Fetch categories from Firestore on component mount
+  useEffect(() => {
+    fetchDailyLogSettings();
+  }, []);
+  
+  // Fetch daily log settings from Firestore
+  const fetchDailyLogSettings = async () => {
+    if (!isAuthenticated || !auth.currentUser) return;
+    
+    setIsLoading(true);
+    
+    try {
+      // Get the settings document from Firestore
+      const settingsDoc = await getDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog'));
+      
+      if (settingsDoc.exists()) {
+        // If settings already exist, use them
+        setCategories(settingsDoc.data().categories || []);
+      } else {
+        // If no settings exist, create default categories based on current hard-coded form
+        const defaultCategories = [
+          {
+            id: 'social',
+            name: 'Social',
+            color: 'blue',
+            items: [
+              { id: 'talked_on_phone_friend', label: 'Talked on phone with friend', type: 'checkbox' },
+              { id: 'talked_on_phone_family', label: 'Talked on phone with family', type: 'checkbox' },
+              { id: 'talked_on_phone_new', label: 'Talked on phone with someone new', type: 'checkbox' },
+              { id: 'texted_friend', label: 'Texted with friend', type: 'checkbox' },
+              { id: 'texted_family', label: 'Texted with family', type: 'checkbox' },
+              { id: 'texted_new', label: 'Texted with someone new', type: 'checkbox' },
+              { id: 'made_plans_friend', label: 'Made plans with friend', type: 'checkbox' },
+              { id: 'made_plans_family', label: 'Made plans with family', type: 'checkbox' },
+              { id: 'made_plans_new', label: 'Made plans with someone new', type: 'checkbox' },
+              { id: 'hung_out_friend', label: 'Hung out with friend', type: 'checkbox' },
+              { id: 'hung_out_family', label: 'Hung out with family', type: 'checkbox' },
+              { id: 'hung_out_new', label: 'Hung out with someone new', type: 'checkbox' },
+              { id: 'kat_smile', label: 'Made Kat smile', type: 'checkbox' },
+              { id: 'kat_nice', label: 'Did something nice for Kat', type: 'checkbox' },
+              { id: 'kat_review', label: 'Did review with Kat', type: 'checkbox' },
+              { id: 'kat_meaningful', label: 'Hung out meaningfully with Kat', type: 'checkbox' }
+            ]
+          },
+          {
+            id: 'wellbeing',
+            name: 'Wellbeing',
+            color: 'purple',
+            items: [
+              { id: 'vibes', label: 'Overall Vibes (0-10)', type: 'select', options: [
+                { value: '0', label: '0 - Terrible' },
+                { value: '1', label: '1' },
+                { value: '2', label: '2' },
+                { value: '3', label: '3' },
+                { value: '4', label: '4' },
+                { value: '5', label: '5 - Average' },
+                { value: '6', label: '6' },
+                { value: '7', label: '7' },
+                { value: '8', label: '8' },
+                { value: '9', label: '9' },
+                { value: '10', label: '10 - Amazing' }
+              ]},
+              { id: 'morning_journal', label: 'Morning Journal', type: 'checkbox' },
+              { id: 'evening_journal', label: 'Evening Journal', type: 'checkbox' },
+              { id: 'meditation', label: 'Meditation/Prayer', type: 'checkbox' },
+              { id: 'epic_activity', label: 'Did something epic', type: 'checkbox' },
+              { id: 'epic_rating', label: 'How epic? (1-5)', type: 'select', options: [
+                { value: '1', label: '1 - Somewhat epic' },
+                { value: '2', label: '2' },
+                { value: '3', label: '3 - Pretty epic' },
+                { value: '4', label: '4' },
+                { value: '5', label: '5 - Legendary' }
+              ], conditionalOn: 'epic_activity' }
+            ]
+          },
+          {
+            id: 'health',
+            name: 'Health',
+            color: 'green',
+            items: [
+              { id: 'cardio', label: 'Did cardio today', type: 'checkbox' },
+              { id: 'miles', label: 'Miles', type: 'number', min: 0, step: 0.1, conditionalOn: 'cardio' },
+              { id: 'duration', label: 'Duration (minutes)', type: 'number', min: 0, conditionalOn: 'cardio' },
+              { id: 'heart_rate', label: 'Avg Heart Rate (BPM)', type: 'number', min: 0, conditionalOn: 'cardio' },
+              { id: 'activity_type', label: 'Activity Type', type: 'select', options: [
+                { value: 'running', label: 'Running' },
+                { value: 'walking', label: 'Walking' },
+                { value: 'cycling', label: 'Cycling' },
+                { value: 'swimming', label: 'Swimming' },
+                { value: 'hiking', label: 'Hiking' },
+                { value: 'climbing', label: 'Climbing' },
+                { value: 'weightlifting', label: 'Weightlifting' },
+                { value: 'other', label: 'Other' }
+              ], conditionalOn: 'cardio' },
+              { id: 'strength', label: 'Did strength training', type: 'checkbox' },
+              { id: 'pushups', label: 'Pushups', type: 'number', min: 0, conditionalOn: 'strength' },
+              { id: 'rows', label: 'Rows', type: 'number', min: 0, conditionalOn: 'strength' },
+              { id: 'situps', label: 'Situps', type: 'number', min: 0, conditionalOn: 'strength' },
+              { id: 'squats', label: 'Squats', type: 'number', min: 0, conditionalOn: 'strength' },
+              { id: 'bed_on_time', label: 'Bed on time', type: 'checkbox' },
+              { id: 'up_on_time', label: 'Up on time', type: 'checkbox' }
+            ]
+          },
+          {
+            id: 'productivity',
+            name: 'Productivity',
+            color: 'amber',
+            items: [
+              { id: 'focused_time', label: 'Focused Productive Time', type: 'select', options: [
+                { value: '0', label: 'None' },
+                { value: '15', label: '15 minutes' },
+                { value: '30', label: '30 minutes' },
+                { value: '45', label: '45 minutes' },
+                { value: '60', label: '1 hour' },
+                { value: '90', label: '1.5 hours' },
+                { value: '120', label: '2 hours' },
+                { value: '180', label: '3 hours' },
+                { value: '240', label: '4 hours' },
+                { value: '300', label: '5 hours' },
+                { value: '360', label: '6+ hours' }
+              ]},
+              { id: 'reading_time', label: 'Reading Time', type: 'select', options: [
+                { value: '0', label: 'None' },
+                { value: '15', label: '15 minutes' },
+                { value: '30', label: '30 minutes' },
+                { value: '45', label: '45 minutes' },
+                { value: '60', label: '1 hour' },
+                { value: '90', label: '1.5 hours' },
+                { value: '120', label: '2 hours' },
+                { value: '180', label: '3+ hours' }
+              ]},
+              { id: 'internet_time', label: 'Mindless Internet Use', type: 'select', options: [
+                { value: '0', label: 'None' },
+                { value: '15', label: '15 minutes' },
+                { value: '30', label: '30 minutes' },
+                { value: '45', label: '45 minutes' },
+                { value: '60', label: '1 hour' },
+                { value: '90', label: '1.5 hours' },
+                { value: '120', label: '2 hours' },
+                { value: '180', label: '3 hours' },
+                { value: '240', label: '4+ hours' }
+              ]}
+            ]
+          }
+        ];
+        
+        setCategories(defaultCategories);
+        
+        // Save default settings to Firestore
+        await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog'), {
+          categories: defaultCategories
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching daily log settings:", error);
+      setError(`Error fetching settings: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Save categories to Firestore
+  const saveCategories = async () => {
+    if (!isAuthenticated || !auth.currentUser) return;
+    
+    setIsSaving(true);
+    
+    try {
+      await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog'), {
+        categories: categories
+      });
+      
+      setError(null);
+    } catch (error) {
+      console.error("Error saving daily log settings:", error);
+      setError(`Error saving settings: ${error.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
+  // Handle adding a new category
+  const handleAddCategory = () => {
+    if (!newCategoryName.trim()) {
+      setError("Category name cannot be empty");
+      return;
+    }
+    
+    const categoryId = newCategoryName.toLowerCase().replace(/\s+/g, '_');
+    
+    // Check if category ID already exists
+    if (categories.some(cat => cat.id === categoryId)) {
+      setError("A category with a similar name already exists");
+      return;
+    }
+    
+    const newCategory = {
+      id: categoryId,
+      name: newCategoryName,
+      color: 'gray',
+      items: []
+    };
+    
+    setCategories([...categories, newCategory]);
+    setNewCategoryName('');
+    setShowAddCategory(false);
+    
+    // Save changes to Firestore
+    saveCategories();
+  };
+  
+  // Handle deleting a category
+  const handleDeleteCategory = (categoryId) => {
+    if (window.confirm("Are you sure you want to delete this category? All items in this category will be removed from your daily log.")) {
+      const updatedCategories = categories.filter(category => category.id !== categoryId);
+      setCategories(updatedCategories);
+      
+      // Save changes to Firestore
+      saveCategories();
+    }
+  };
+  
+  // Handle changing category color
+  const handleCategoryColorChange = (categoryId, newColor) => {
+    const updatedCategories = categories.map(category => {
+      if (category.id === categoryId) {
+        return { ...category, color: newColor };
+      }
+      return category;
+    });
+    
+    setCategories(updatedCategories);
+    
+    // Save changes to Firestore
+    saveCategories();
+  };
+  
+  // Handle adding a new item to a category
+  const handleAddItem = (categoryId) => {
+    if (!newItemData.label.trim()) {
+      setError("Item label cannot be empty");
+      return;
+    }
+    
+    // Generate item ID from label
+    const itemId = newItemData.label.toLowerCase().replace(/\s+/g, '_');
+    
+    const updatedCategories = categories.map(category => {
+      if (category.id === categoryId) {
+        // Check if item with similar ID already exists
+        if (category.items.some(item => item.id === itemId)) {
+          setError("An item with a similar name already exists in this category");
+          return category;
+        }
+        
+        return {
+          ...category,
+          items: [...category.items, { ...newItemData, id: itemId }]
+        };
+      }
+      return category;
+    });
+    
+    setCategories(updatedCategories);
+    setNewItemData({ id: '', label: '', type: 'checkbox' });
+    setShowAddItem(null);
+    setError(null);
+    
+    // Save changes to Firestore
+    saveCategories();
+  };
+  
+  // Handle deleting an item
+  const handleDeleteItem = (categoryId, itemId) => {
+    const updatedCategories = categories.map(category => {
+      if (category.id === categoryId) {
+        return {
+          ...category,
+          items: category.items.filter(item => item.id !== itemId)
+        };
+      }
+      return category;
+    });
+    
+    setCategories(updatedCategories);
+    
+    // Save changes to Firestore
+    saveCategories();
+  };
+  
+  // Handle editing an item
+  const handleEditItem = (categoryId, itemId, updatedItem) => {
+    const updatedCategories = categories.map(category => {
+      if (category.id === categoryId) {
+        return {
+          ...category,
+          items: category.items.map(item => {
+            if (item.id === itemId) {
+              return { ...item, ...updatedItem };
+            }
+            return item;
+          })
+        };
+      }
+      return category;
+    });
+    
+    setCategories(updatedCategories);
+    
+    // Save changes to Firestore
+    saveCategories();
+  };
+  
+  if (isLoading) {
+    return (
+      <div className="text-center py-6">
+        <div className="inline-block h-6 w-6 animate-spin rounded-full border-4 border-solid border-blue-400 border-r-transparent"></div>
+        <p className="mt-2 text-gray-400">Loading settings...</p>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="space-y-6">
+      {error && (
+        <div className="bg-red-900 text-red-200 p-3 rounded-md mb-4">
+          {error}
+        </div>
+      )}
+      
+      {/* Category list */}
+      {categories.map((category, index) => (
+        <div key={category.id} className={`bg-${category.color}-900 p-4 rounded-md border border-${category.color}-800`}>
+          <div className="flex justify-between items-center mb-3">
+            <div className="flex items-center">
+              <h4 className={`font-medium text-${category.color}-100`}>{category.name}</h4>
+              
+              {/* Color selector */}
+              <div className="ml-4 flex items-center space-x-1">
+                {['blue', 'green', 'purple', 'amber', 'red', 'gray'].map(color => (
+                  <button
+                    key={color}
+                    onClick={() => handleCategoryColorChange(category.id, color)}
+                    className={`w-5 h-5 rounded-full bg-${color}-600 border ${category.color === color ? 'border-white' : 'border-transparent'}`}
+                    title={`Change to ${color}`}
+                  />
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  setEditingCategory(editingCategory === category.id ? null : category.id);
+                  setShowAddItem(null);
+                }}
+                className={`px-2 py-1 rounded text-xs ${
+                  editingCategory === category.id 
+                    ? `bg-${category.color}-700 text-${category.color}-200` 
+                    : `bg-${category.color}-800 text-${category.color}-200 hover:bg-${category.color}-700`
+                }`}
+              >
+                {editingCategory === category.id ? 'Done' : 'Edit Items'}
+              </button>
+              
+              <button
+                onClick={() => handleDeleteCategory(category.id)}
+                className={`px-2 py-1 bg-red-700 hover:bg-red-600 text-white rounded text-xs`}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+          
+          {/* Item list */}
+          {editingCategory === category.id ? (
+            <div className="space-y-3 ml-4">
+              {category.items.map(item => (
+                <div key={item.id} className={`p-3 bg-${category.color}-800 rounded-md flex justify-between items-center`}>
+                  <div>
+                    <div className="flex items-center">
+                      <span className={`text-${category.color}-100 font-medium mr-2`}>{item.label}</span>
+                      <span className={`text-xs bg-${category.color}-700 text-${category.color}-300 px-2 py-0.5 rounded`}>
+                        {item.type}
+                      </span>
+                      
+                      {item.conditionalOn && (
+                        <span className={`ml-2 text-xs bg-${category.color}-700 text-${category.color}-300 px-2 py-0.5 rounded`}>
+                          Conditional
+                        </span>
+                      )}
+                    </div>
+                    
+                    {item.type === 'select' && item.options && (
+                      <div className="mt-1 text-xs text-gray-400">
+                        {item.options.length} options
+                      </div>
+                    )}
+                  </div>
+                  
+                  <button
+                    onClick={() => handleDeleteItem(category.id, item.id)}
+                    className="text-red-400 hover:text-red-300"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+              
+              {/* Add new item form */}
+              {showAddItem === category.id ? (
+                <div className={`p-3 bg-${category.color}-800 rounded-md`}>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                    <div>
+                      <label className={`block text-xs font-medium mb-1 text-${category.color}-200`}>
+                        Item Label
+                      </label>
+                      <input
+                        type="text"
+                        value={newItemData.label}
+                        onChange={(e) => setNewItemData({ ...newItemData, label: e.target.value })}
+                        className={`w-full p-1.5 text-sm bg-${category.color}-700 border border-${category.color}-600 rounded-md text-white`}
+                        placeholder="Label"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className={`block text-xs font-medium mb-1 text-${category.color}-200`}>
+                        Item Type
+                      </label>
+                      <select
+                        value={newItemData.type}
+                        onChange={(e) => setNewItemData({ ...newItemData, type: e.target.value })}
+                        className={`w-full p-1.5 text-sm bg-${category.color}-700 border border-${category.color}-600 rounded-md text-white`}
+                      >
+                        <option value="checkbox">Checkbox</option>
+                        <option value="select">Select</option>
+                        <option value="number">Number</option>
+                        <option value="text">Text</option>
+                      </select>
+                    </div>
+                    
+                    <div className="flex items-end">
+                      <button
+                        onClick={() => handleAddItem(category.id)}
+                        className={`w-full px-3 py-1.5 bg-${category.color}-600 hover:bg-${category.color}-700 text-white rounded-md text-sm`}
+                      >
+                        Add Item
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setShowAddItem(null)}
+                      className="text-sm text-gray-400 hover:text-gray-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setShowAddItem(category.id);
+                    setNewItemData({ id: '', label: '', type: 'checkbox' });
+                  }}
+                  className={`w-full py-2 bg-${category.color}-800 hover:bg-${category.color}-700 rounded-md text-${category.color}-200 text-sm flex items-center justify-center`}
+                >
+                  <span className="mr-1">+</span> Add Item
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 ml-4">
+              {category.items.map(item => (
+                <div key={item.id} className={`text-${category.color}-200 text-sm`}>
+                  {item.label}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      
+      {/* Add new category section */}
+      {showAddCategory ? (
+        <div className="bg-gray-800 p-4 rounded-md border border-gray-700">
+          <h4 className="font-medium text-gray-200 mb-3">Add New Category</h4>
+          
+          <div className="flex space-x-3 mb-3">
+            <input
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="Category name"
+              className="flex-1 p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+            />
+            
+            <button
+              onClick={handleAddCategory}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+              disabled={isSaving}
+            >
+              {isSaving ? "Saving..." : "Add"}
+            </button>
+          </div>
+          
+          <button
+            onClick={() => setShowAddCategory(false)}
+            className="text-sm text-gray-400 hover:text-gray-300"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowAddCategory(true)}
+          className="w-full py-3 bg-gray-800 hover:bg-gray-700 rounded-md text-gray-300 border border-gray-700"
+        >
+          + Add New Category
+        </button>
+      )}
+    </div>
+  );
+};
 
   const renderContent = () => {
     if (isLoading) {
@@ -4058,8 +4169,6 @@ const LifeTrackerDashboard = () => {
       <>
         {renderDashboardHeader()}
         
-        {/* Latest Strava Activity section removed */}
-        
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'social' && <div className="p-4">
           <h2 className="text-2xl font-bold mb-6 text-gray-100">Social</h2>
@@ -4070,6 +4179,7 @@ const LifeTrackerDashboard = () => {
         {activeTab === 'dailylog' && renderDailyLogTab()}
         {activeTab === 'strava' && renderStravaTab()}
         {activeTab === 'database' && renderDatabaseTab()}
+        {activeTab === 'settings' && renderSettingsTab()}
         
         {renderDashboardFooter()}
       </>
@@ -4430,7 +4540,8 @@ const LifeTrackerDashboard = () => {
       { id: 'social', label: 'Social' },
       { id: 'dailylog', label: 'Daily Log' },
       { id: 'strava', label: 'Strava' },
-      { id: 'database', label: 'Database' }
+      { id: 'database', label: 'Database' },
+      { id: 'settings', label: 'Settings' } 
     ];
     
     return (
