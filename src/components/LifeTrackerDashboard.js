@@ -3183,24 +3183,7 @@ const LifeTrackerDashboard = () => {
     );
   };
 
-  const renderSettingsTab = () => {
-    return (
-      <div className="p-4">
-        <h2 className="text-2xl font-bold mb-6 text-gray-100">Settings</h2>
-        
-        <div className="mb-8">
-          <h3 className="text-xl font-semibold mb-4 text-gray-200">Daily Log Items</h3>
-          <p className="mb-4 text-gray-400">
-            Customize the items that appear in your daily log form. Changes will be saved to your account.
-          </p>
-          
-          <DailyLogSettings />
-        </div>
-      </div>
-    );
-  };
-
-  // Modify the DailyLogForm component to use dynamically loaded settings
+// Dynamic Daily Log Form Component Implementation
 const DailyLogForm = () => {
   // State for form data - now empty by default
   const [formData, setFormData] = useState({});
@@ -3555,7 +3538,26 @@ const DailyLogForm = () => {
   );
 };
 
-// the DailyLogSettings component
+// Complete implementation of the Settings Tab with Daily Log Item Management
+
+const renderSettingsTab = () => {
+  return (
+    <div className="p-4">
+      <h2 className="text-2xl font-bold mb-6 text-gray-100">Settings</h2>
+      
+      <div className="mb-8">
+        <h3 className="text-xl font-semibold mb-4 text-gray-200">Daily Log Items</h3>
+        <p className="mb-4 text-gray-400">
+          Customize the items that appear in your daily log form. Changes will be saved to your account.
+        </p>
+        
+        <DailyLogSettings />
+      </div>
+    </div>
+  );
+};
+
+// DailyLogSettings Component - Complete Implementation
 const DailyLogSettings = () => {
   // State for managing categories and items
   const [categories, setCategories] = useState([]);
@@ -4083,34 +4085,174 @@ const DailyLogSettings = () => {
           {editingCategory === category.id ? (
             <div className="space-y-3 ml-4">
               {category.items.map(item => (
-                <div key={item.id} className={`p-3 bg-${category.color}-800 rounded-md flex justify-between items-center`}>
-                  <div>
-                    <div className="flex items-center">
-                      <span className={`text-${category.color}-100 font-medium mr-2`}>{item.label}</span>
-                      <span className={`text-xs bg-${category.color}-700 text-${category.color}-300 px-2 py-0.5 rounded`}>
-                        {item.type}
-                      </span>
-                      
-                      {item.conditionalOn && (
-                        <span className={`ml-2 text-xs bg-${category.color}-700 text-${category.color}-300 px-2 py-0.5 rounded`}>
-                          Conditional
-                        </span>
-                      )}
-                    </div>
-                    
-                    {item.type === 'select' && item.options && (
-                      <div className="mt-1 text-xs text-gray-400">
-                        {item.options.length} options
+                <div key={item.id} className={`p-3 bg-${category.color}-800 rounded-md flex justify-between items-center mb-2`}>
+                  {editingItem === item.id ? (
+                    // Edit item form
+                    <div className="w-full">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                        <div>
+                          <label className={`block text-xs font-medium mb-1 text-${category.color}-200`}>
+                            Item Label
+                          </label>
+                          <input
+                            type="text"
+                            value={editItemData.label}
+                            onChange={(e) => setEditItemData({ ...editItemData, label: e.target.value })}
+                            className={`w-full p-1.5 text-sm bg-${category.color}-700 border border-${category.color}-600 rounded-md text-white`}
+                            placeholder="Label"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className={`block text-xs font-medium mb-1 text-${category.color}-200`}>
+                            Item Type
+                          </label>
+                          <select
+                            value={editItemData.type}
+                            onChange={(e) => setEditItemData({ ...editItemData, type: e.target.value })}
+                            className={`w-full p-1.5 text-sm bg-${category.color}-700 border border-${category.color}-600 rounded-md text-white`}
+                            disabled={true} // Don't allow changing type for now as it's complex
+                          >
+                            <option value="checkbox">Checkbox</option>
+                            <option value="select">Select</option>
+                            <option value="number">Number</option>
+                            <option value="text">Text</option>
+                          </select>
+                        </div>
+                        
+                        {editItemData.type === 'select' && (
+                          <div>
+                            <label className={`block text-xs font-medium mb-1 text-${category.color}-200`}>
+                              Options
+                            </label>
+                            <input
+                              type="text"
+                              value="0-10 (Cannot edit options)"
+                              disabled
+                              className={`w-full p-1.5 text-sm bg-${category.color}-700 border border-${category.color}-600 rounded-md text-white opacity-60`}
+                            />
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  
-                  <button
-                    onClick={() => handleDeleteItem(category.id, item.id)}
-                    className="text-red-400 hover:text-red-300"
-                  >
-                    Delete
-                  </button>
+                      
+                      {/* Conditional field setting */}
+                      {item.conditionalOn ? (
+                        <div className="mb-3">
+                          <label className={`block text-xs font-medium mb-1 text-${category.color}-200`}>
+                            Show only when (Conditional)
+                          </label>
+                          <select
+                            value={editItemData.conditionalOn || ''}
+                            onChange={(e) => {
+                              const value = e.target.value === '' ? null : e.target.value;
+                              setEditItemData({ ...editItemData, conditionalOn: value });
+                            }}
+                            className={`w-full p-1.5 text-sm bg-${category.color}-700 border border-${category.color}-600 rounded-md text-white`}
+                          >
+                            <option value="">Not conditional</option>
+                            {category.items
+                              .filter(i => i.id !== item.id && i.type === 'checkbox')
+                              .map(i => (
+                                <option key={i.id} value={i.id}>{i.label}</option>
+                              ))
+                            }
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="mb-3">
+                          <label className={`block text-xs font-medium mb-1 text-${category.color}-200`}>
+                            Show only when (Conditional)
+                          </label>
+                          <select
+                            value={editItemData.conditionalOn || ''}
+                            onChange={(e) => {
+                              const value = e.target.value === '' ? null : e.target.value;
+                              setEditItemData({ ...editItemData, conditionalOn: value });
+                            }}
+                            className={`w-full p-1.5 text-sm bg-${category.color}-700 border border-${category.color}-600 rounded-md text-white`}
+                          >
+                            <option value="">Not conditional</option>
+                            {category.items
+                              .filter(i => i.id !== item.id && i.type === 'checkbox')
+                              .map(i => (
+                                <option key={i.id} value={i.id}>{i.label}</option>
+                              ))
+                            }
+                          </select>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-end space-x-2">
+                        <button
+                          onClick={() => {
+                            setEditingItem(null);
+                            setEditItemData(null);
+                          }}
+                          className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-md"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={async () => {
+                            // Validate input
+                            if (!editItemData.label.trim()) {
+                              setError("Item label cannot be empty");
+                              return;
+                            }
+                            
+                            await handleEditItem(category.id, item.id, editItemData);
+                            setEditingItem(null);
+                            setEditItemData(null);
+                          }}
+                          className={`px-3 py-1 text-sm bg-${category.color}-600 hover:bg-${category.color}-700 text-white rounded-md`}
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    // Regular item display
+                    <>
+                      <div>
+                        <div className="flex items-center">
+                          <span className={`text-${category.color}-100 font-medium mr-2`}>{item.label}</span>
+                          <span className={`text-xs bg-${category.color}-700 text-${category.color}-300 px-2 py-0.5 rounded`}>
+                            {item.type}
+                          </span>
+                          
+                          {item.conditionalOn && (
+                            <span className={`ml-2 text-xs bg-${category.color}-700 text-${category.color}-300 px-2 py-0.5 rounded`}>
+                              Conditional
+                            </span>
+                          )}
+                        </div>
+                        
+                        {item.type === 'select' && item.options && (
+                          <div className="mt-1 text-xs text-gray-400">
+                            {item.options.length} options
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => {
+                            setEditingItem(item.id);
+                            setEditItemData({ ...item });
+                          }}
+                          className="text-blue-400 hover:text-blue-300"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteItem(category.id, item.id)}
+                          className="text-red-400 hover:text-red-300"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
               
@@ -4156,6 +4298,31 @@ const DailyLogSettings = () => {
                       </button>
                     </div>
                   </div>
+                  
+                  {/* Conditional field setting */}
+                  {newItemData.type !== 'checkbox' && (
+                    <div className="mb-3">
+                      <label className={`block text-xs font-medium mb-1 text-${category.color}-200`}>
+                        Show only when (Conditional)
+                      </label>
+                      <select
+                        value={newItemData.conditionalOn || ''}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? null : e.target.value;
+                          setNewItemData({ ...newItemData, conditionalOn: value });
+                        }}
+                        className={`w-full p-1.5 text-sm bg-${category.color}-700 border border-${category.color}-600 rounded-md text-white`}
+                      >
+                        <option value="">Not conditional</option>
+                        {category.items
+                          .filter(item => item.type === 'checkbox')
+                          .map(item => (
+                            <option key={item.id} value={item.id}>{item.label}</option>
+                          ))
+                        }
+                      </select>
+                    </div>
+                  )}
                   
                   <div className="flex justify-end">
                     <button
