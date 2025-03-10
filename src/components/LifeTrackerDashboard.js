@@ -96,11 +96,6 @@ const LifeTrackerDashboard = () => {
   
   // Export state
   const [isExporting, setIsExporting] = useState(false);
-  
-  // We'll implement a mock for Garmin Connect instead of using the node library
-  // which doesn't work well in browser environments
-
-  // No longer saving goals to localStorage or Firestore
 
   // Check authentication state on component mount
   useEffect(() => {
@@ -685,360 +680,7 @@ const LifeTrackerDashboard = () => {
       </div>
     );
   };
-  
-// Modify the DailyLogForm component to use dynamically loaded settings
-const DailyLogForm = () => {
-  // State for form data - now empty by default
-  const [formData, setFormData] = useState({});
-  
-  // State for tracking if sections are expanded
-  const [expandedSections, setExpandedSections] = useState({});
-  
-  // State for daily log settings
-  const [categories, setCategories] = useState([]);
-  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
-  
-  // Load settings from Firestore using a real-time listener
-  useEffect(() => {
-    if (!isAuthenticated || !auth.currentUser) return;
-    
-    setIsLoadingSettings(true);
-    
-    // Set up a real-time listener on the settings document
-    const unsubscribe = onSnapshot(
-      doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog'),
-      (settingsDoc) => {
-        try {
-          if (settingsDoc.exists()) {
-            console.log("Daily log settings updated:", settingsDoc.data());
-            
-            // If settings exist, use them
-            const fetchedCategories = settingsDoc.data().categories || [];
-            setCategories(fetchedCategories);
-            
-            // Initialize form data based on categories
-            const initialFormData = {};
-            
-            // Process all categories and their items to set initial values
-            fetchedCategories.forEach(category => {
-              if (!category.items || !Array.isArray(category.items)) {
-                console.warn(`Category ${category.id} has no items or items is not an array`, category);
-                return;
-              }
-              
-              category.items.forEach(item => {
-                if (!item || !item.id) {
-                  console.warn("Invalid item found in category", category.id);
-                  return;
-                }
-                
-                // Set default values based on item type
-                switch (item.type) {
-                  case 'checkbox':
-                    initialFormData[item.id] = "No";
-                    break;
-                  case 'select':
-                    // Find the default (first) option
-                    if (item.options && item.options.length > 0) {
-                      initialFormData[item.id] = item.options[0].value;
-                    } else {
-                      initialFormData[item.id] = "";
-                    }
-                    break;
-                  case 'number':
-                    initialFormData[item.id] = item.defaultValue || 0;
-                    break;
-                  default:
-                    initialFormData[item.id] = "";
-                }
-              });
-            });
-            
-            // Initialize the form with these default values
-            setFormData(initialFormData);
-            
-            // Initialize expanded sections state
-            const initialExpandedSections = {};
-            fetchedCategories.forEach(category => {
-              initialExpandedSections[category.id] = false;
-            });
-            setExpandedSections(initialExpandedSections);
-            
-            setIsLoadingSettings(false);
-          } else {
-            // If no settings exist, show a message or redirect to settings
-            console.log("No daily log settings found. Using defaults.");
-            setIsLoadingSettings(false);
-          }
-        } catch (error) {
-          console.error("Error processing daily log settings:", error);
-          setError(`Error loading daily log form: ${error.message}`);
-          setIsLoadingSettings(false);
-        }
-      },
-      (error) => {
-        console.error("Error listening to daily log settings:", error);
-        setError(`Error watching daily log settings: ${error.message}`);
-        setIsLoadingSettings(false);
-      }
-    );
-    
-    // Clean up listener on unmount
-    return () => unsubscribe();
-  }, [isAuthenticated, auth.currentUser]);
-  
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? (checked ? "Yes" : "No") : value
-    }));
-  };
-  
-  const handleExpandSection = (section) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
-  
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    await addDailyLog(formData);
-    
-    // Reset form after submission - get defaults from settings again
-    const resetData = {};
-    categories.forEach(category => {
-      category.items.forEach(item => {
-        switch (item.type) {
-          case 'checkbox':
-            resetData[item.id] = "No";
-            break;
-          case 'select':
-            if (item.options && item.options.length > 0) {
-              resetData[item.id] = item.options[0].value;
-            } else {
-              resetData[item.id] = "";
-            }
-            break;
-          case 'number':
-            resetData[item.id] = item.defaultValue || 0;
-            break;
-          default:
-            resetData[item.id] = "";
-        }
-      });
-    });
-    
-    setFormData(resetData);
-    
-    // Reset expanded sections
-    const resetExpandedSections = {};
-    categories.forEach(category => {
-      resetExpandedSections[category.id] = false;
-    });
-    setExpandedSections(resetExpandedSections);
-  };
-  
-  // Function to check if a field should be visible (for conditional fields)
-  const isFieldVisible = (item) => {
-    if (!item.conditionalOn) return true;
-    
-    // Check if the parent field has the value that triggers this field
-    return formData[item.conditionalOn] === "Yes";
-  };
-  
-  // Render form field based on type
-  const renderFormField = (item, categoryColor) => {
-    switch (item.type) {
-      case 'checkbox':
-        return (
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id={item.id}
-              name={item.id}
-              checked={formData[item.id] === "Yes"}
-              onChange={handleChange}
-              className="mr-2"
-            />
-            <label htmlFor={item.id} className="text-gray-200">{item.label}</label>
-          </div>
-        );
-        
-      case 'select':
-        return (
-          <div>
-            <label htmlFor={item.id} className="block mb-1 text-gray-200">{item.label}</label>
-            <select
-              id={item.id}
-              name={item.id}
-              value={formData[item.id] || ""}
-              onChange={handleChange}
-              className={`w-full p-2 bg-gray-700 border border-gray-600 rounded text-white`}
-            >
-              {item.options && item.options.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        );
-        
-      case 'number':
-        return (
-          <div>
-            <label htmlFor={item.id} className="block mb-1 text-gray-200">{item.label}</label>
-            <input
-              type="number"
-              id={item.id}
-              name={item.id}
-              value={formData[item.id] || ""}
-              onChange={handleChange}
-              min={item.min || 0}
-              step={item.step || 1}
-              className={`w-full p-2 bg-gray-700 border border-gray-600 rounded text-white`}
-            />
-          </div>
-        );
-        
-      case 'text':
-        return (
-          <div>
-            <label htmlFor={item.id} className="block mb-1 text-gray-200">{item.label}</label>
-            <input
-              type="text"
-              id={item.id}
-              name={item.id}
-              value={formData[item.id] || ""}
-              onChange={handleChange}
-              className={`w-full p-2 bg-gray-700 border border-gray-600 rounded text-white`}
-            />
-          </div>
-        );
-        
-      default:
-        return (
-          <div className="text-yellow-400">
-            Unknown field type: {item.type}
-          </div>
-        );
-    }
-  };
-  
-  if (isLoadingSettings) {
-    return (
-      <div className="bg-gray-800 p-6 rounded-lg shadow-md mb-6 border border-gray-700">
-        <h3 className="text-xl font-semibold mb-4 text-gray-100">Loading Daily Log Form...</h3>
-        <div className="flex justify-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-400 border-r-transparent"></div>
-        </div>
-      </div>
-    );
-  }
-  
-  if (categories.length === 0) {
-    return (
-      <div className="bg-gray-800 p-6 rounded-lg shadow-md mb-6 border border-gray-700">
-        <h3 className="text-xl font-semibold mb-4 text-gray-100">Daily Log Setup Required</h3>
-        <p className="text-gray-300 mb-4">
-          It looks like your daily log items haven't been set up yet.
-        </p>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
-        >
-          Go to Settings
-        </button>
-      </div>
-    );
-  }
-  
-  return (
-    <div className="bg-gray-800 p-6 rounded-lg shadow-md mb-6 border border-gray-700">
-      <h3 className="text-xl font-semibold mb-4 text-gray-100">Add Daily Log Entry</h3>
-      <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Render each category */}
-          {categories.map(category => (
-            <div key={category.id} className={`bg-${category.color}-900 p-4 rounded-md border border-${category.color}-800`}>
-              <h4 className={`font-medium text-${category.color}-100 mb-3`}>{category.name}</h4>
-              
-              <div className="space-y-4">
-                {/* Group items that should be nested under an expandable section */}
-                {category.items
-                  .filter(item => !item.conditionalOn)
-                  .map(item => {
-                    // Check if this item has children (conditional items)
-                    const hasChildren = category.items.some(childItem => 
-                      childItem.conditionalOn === item.id
-                    );
-                    
-                    // If this is a potential parent with a checkbox type
-                    if (hasChildren && item.type === 'checkbox') {
-                      return (
-                        <div key={item.id} className={`border-b border-${category.color}-800 pb-2`}>
-                          {/* Render the parent item */}
-                          <div className="flex items-center">
-                            <input
-                              type="checkbox"
-                              id={item.id}
-                              name={item.id}
-                              checked={formData[item.id] === "Yes"}
-                              onChange={handleChange}
-                              className="mr-2"
-                            />
-                            <label htmlFor={item.id} className="text-gray-200">{item.label}</label>
-                          </div>
-                          
-                          {/* Render children when parent is checked */}
-                          {formData[item.id] === "Yes" && (
-                            <div className="mt-3 ml-6 space-y-3">
-                              {category.items
-                                .filter(childItem => childItem.conditionalOn === item.id)
-                                .map(childItem => (
-                                  <div key={childItem.id}>
-                                    {renderFormField(childItem, category.color)}
-                                  </div>
-                                ))
-                              }
-                            </div>
-                          )}
-                        </div>
-                      );
-                    }
-                    
-                    // For other non-parent, non-conditional items
-                    if (!item.conditionalOn) {
-                      return (
-                        <div key={item.id} className="mb-3">
-                          {renderFormField(item, category.color)}
-                        </div>
-                      );
-                    }
-                    
-                    return null; // Skip conditional items that will be rendered with their parents
-                  })
-                }
-              </div>
-            </div>
-          ))}
-        </div>
-        
-        <div className="mt-6 text-center">
-          <button 
-            type="submit" 
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            disabled={isLoading}
-          >
-            {isLoading ? "Saving..." : "Save Daily Log"}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-};
+
   // Fetch data from Firestore
   const fetchFirestoreData = async () => {
     if (!isAuthenticated || !auth.currentUser) {
@@ -3558,8 +3200,362 @@ const DailyLogForm = () => {
     );
   };
 
+  // Modify the DailyLogForm component to use dynamically loaded settings
+const DailyLogForm = () => {
+  // State for form data - now empty by default
+  const [formData, setFormData] = useState({});
+  
+  // State for tracking if sections are expanded
+  const [expandedSections, setExpandedSections] = useState({});
+  
+  // State for daily log settings
+  const [categories, setCategories] = useState([]);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  
+  // Load settings from Firestore using a real-time listener
+  useEffect(() => {
+    if (!isAuthenticated || !auth.currentUser) return;
+    
+    setIsLoadingSettings(true);
+    
+    // Set up a real-time listener on the settings document
+    const unsubscribe = onSnapshot(
+      doc(db, 'users', auth.currentUser.uid, 'settings', 'dailyLog'),
+      (settingsDoc) => {
+        try {
+          if (settingsDoc.exists()) {
+            console.log("Daily log settings updated:", settingsDoc.data());
+            
+            // If settings exist, use them
+            const fetchedCategories = settingsDoc.data().categories || [];
+            setCategories(fetchedCategories);
+            
+            // Initialize form data based on categories
+            const initialFormData = {};
+            
+            // Process all categories and their items to set initial values
+            fetchedCategories.forEach(category => {
+              if (!category.items || !Array.isArray(category.items)) {
+                console.warn(`Category ${category.id} has no items or items is not an array`, category);
+                return;
+              }
+              
+              category.items.forEach(item => {
+                if (!item || !item.id) {
+                  console.warn("Invalid item found in category", category.id);
+                  return;
+                }
+                
+                // Set default values based on item type
+                switch (item.type) {
+                  case 'checkbox':
+                    initialFormData[item.id] = "No";
+                    break;
+                  case 'select':
+                    // Find the default (first) option
+                    if (item.options && item.options.length > 0) {
+                      initialFormData[item.id] = item.options[0].value;
+                    } else {
+                      initialFormData[item.id] = "";
+                    }
+                    break;
+                  case 'number':
+                    initialFormData[item.id] = item.defaultValue || 0;
+                    break;
+                  default:
+                    initialFormData[item.id] = "";
+                }
+              });
+            });
+            
+            // Initialize the form with these default values
+            setFormData(initialFormData);
+            
+            // Initialize expanded sections state
+            const initialExpandedSections = {};
+            fetchedCategories.forEach(category => {
+              initialExpandedSections[category.id] = false;
+            });
+            setExpandedSections(initialExpandedSections);
+            
+            setIsLoadingSettings(false);
+          } else {
+            // If no settings exist, show a message or redirect to settings
+            console.log("No daily log settings found. Using defaults.");
+            setIsLoadingSettings(false);
+          }
+        } catch (error) {
+          console.error("Error processing daily log settings:", error);
+          setError(`Error loading daily log form: ${error.message}`);
+          setIsLoadingSettings(false);
+        }
+      },
+      (error) => {
+        console.error("Error listening to daily log settings:", error);
+        setError(`Error watching daily log settings: ${error.message}`);
+        setIsLoadingSettings(false);
+      }
+    );
+    
+    // Clean up listener on unmount
+    return () => unsubscribe();
+  }, [isAuthenticated, auth.currentUser]);
+  
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (checked ? "Yes" : "No") : value
+    }));
+  };
+  
+  const handleExpandSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await addDailyLog(formData);
+    
+    // Reset form after submission - get defaults from settings again
+    const resetData = {};
+    categories.forEach(category => {
+      category.items.forEach(item => {
+        switch (item.type) {
+          case 'checkbox':
+            resetData[item.id] = "No";
+            break;
+          case 'select':
+            if (item.options && item.options.length > 0) {
+              resetData[item.id] = item.options[0].value;
+            } else {
+              resetData[item.id] = "";
+            }
+            break;
+          case 'number':
+            resetData[item.id] = item.defaultValue || 0;
+            break;
+          default:
+            resetData[item.id] = "";
+        }
+      });
+    });
+    
+    setFormData(resetData);
+    
+    // Reset expanded sections
+    const resetExpandedSections = {};
+    categories.forEach(category => {
+      resetExpandedSections[category.id] = false;
+    });
+    setExpandedSections(resetExpandedSections);
+  };
+  
+  // Function to check if a field should be visible (for conditional fields)
+  const isFieldVisible = (item, categoryItems) => {
+    if (!item.conditionalOn) return true;
+    
+    // Check if the parent field has the value that triggers this field
+    // Look for the parent field in the form data
+    return formData[item.conditionalOn] === "Yes";
+  };
+  
+  // Render form field based on type
+  const renderFormField = (item, categoryColor) => {
+    switch (item.type) {
+      case 'checkbox':
+        return (
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id={item.id}
+              name={item.id}
+              checked={formData[item.id] === "Yes"}
+              onChange={handleChange}
+              className="mr-2"
+            />
+            <label htmlFor={item.id} className="text-gray-200">{item.label}</label>
+          </div>
+        );
+        
+      case 'select':
+        return (
+          <div>
+            <label htmlFor={item.id} className="block mb-1 text-gray-200">{item.label}</label>
+            <select
+              id={item.id}
+              name={item.id}
+              value={formData[item.id] || ""}
+              onChange={handleChange}
+              className={`w-full p-2 bg-gray-700 border border-gray-600 rounded text-white`}
+            >
+              {item.options && item.options.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+        
+      case 'number':
+        return (
+          <div>
+            <label htmlFor={item.id} className="block mb-1 text-gray-200">{item.label}</label>
+            <input
+              type="number"
+              id={item.id}
+              name={item.id}
+              value={formData[item.id] || ""}
+              onChange={handleChange}
+              min={item.min || 0}
+              step={item.step || 1}
+              className={`w-full p-2 bg-gray-700 border border-gray-600 rounded text-white`}
+            />
+          </div>
+        );
+        
+      case 'text':
+        return (
+          <div>
+            <label htmlFor={item.id} className="block mb-1 text-gray-200">{item.label}</label>
+            <input
+              type="text"
+              id={item.id}
+              name={item.id}
+              value={formData[item.id] || ""}
+              onChange={handleChange}
+              className={`w-full p-2 bg-gray-700 border border-gray-600 rounded text-white`}
+            />
+          </div>
+        );
+        
+      default:
+        return (
+          <div className="text-yellow-400">
+            Unknown field type: {item.type}
+          </div>
+        );
+    }
+  };
+  
+  if (isLoadingSettings) {
+    return (
+      <div className="bg-gray-800 p-6 rounded-lg shadow-md mb-6 border border-gray-700">
+        <h3 className="text-xl font-semibold mb-4 text-gray-100">Loading Daily Log Form...</h3>
+        <div className="flex justify-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-400 border-r-transparent"></div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (categories.length === 0) {
+    return (
+      <div className="bg-gray-800 p-6 rounded-lg shadow-md mb-6 border border-gray-700">
+        <h3 className="text-xl font-semibold mb-4 text-gray-100">Daily Log Setup Required</h3>
+        <p className="text-gray-300 mb-4">
+          It looks like your daily log items haven't been set up yet.
+        </p>
+        <button
+          onClick={() => setActiveTab('settings')}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+        >
+          Go to Settings
+        </button>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="bg-gray-800 p-6 rounded-lg shadow-md mb-6 border border-gray-700">
+      <h3 className="text-xl font-semibold mb-4 text-gray-100">Add Daily Log Entry</h3>
+      <form onSubmit={handleSubmit}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Render each category */}
+          {categories.map(category => (
+            <div key={category.id} className={`bg-${category.color}-900 p-4 rounded-md border border-${category.color}-800`}>
+              <h4 className={`font-medium text-${category.color}-100 mb-3`}>{category.name}</h4>
+              
+              <div className="space-y-4">
+                {/* Group items that should be nested under an expandable section */}
+                {category.items
+                  .filter(item => !item.conditionalOn)
+                  .map(item => {
+                    // Check if this item has children (conditional items)
+                    const hasChildren = category.items.some(childItem => 
+                      childItem.conditionalOn === item.id
+                    );
+                    
+                    // If this is a potential parent with a checkbox type
+                    if (hasChildren && item.type === 'checkbox') {
+                      return (
+                        <div key={item.id} className={`border-b border-${category.color}-800 pb-2`}>
+                          {/* Render the parent item */}
+                          <div className="flex items-center">
+                            <input
+                              type="checkbox"
+                              id={item.id}
+                              name={item.id}
+                              checked={formData[item.id] === "Yes"}
+                              onChange={handleChange}
+                              className="mr-2"
+                            />
+                            <label htmlFor={item.id} className="text-gray-200">{item.label}</label>
+                          </div>
+                          
+                          {/* Render children when parent is checked */}
+                          {formData[item.id] === "Yes" && (
+                            <div className="mt-3 ml-6 space-y-3">
+                              {category.items
+                                .filter(childItem => childItem.conditionalOn === item.id)
+                                .map(childItem => (
+                                  <div key={childItem.id}>
+                                    {renderFormField(childItem, category.color)}
+                                  </div>
+                                ))
+                              }
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    
+                    // For other non-parent, non-conditional items
+                    if (!item.conditionalOn) {
+                      return (
+                        <div key={item.id} className="mb-3">
+                          {renderFormField(item, category.color)}
+                        </div>
+                      );
+                    }
+                    
+                    return null; // Skip conditional items that will be rendered with their parents
+                  })
+                }
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        <div className="mt-6 text-center">
+          <button 
+            type="submit" 
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            disabled={isLoading}
+          >
+            {isLoading ? "Saving..." : "Save Daily Log"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
 
-// Step 4: Create the DailyLogSettings component
+// the DailyLogSettings component
 const DailyLogSettings = () => {
   // State for managing categories and items
   const [categories, setCategories] = useState([]);
@@ -3578,6 +3574,10 @@ const DailyLogSettings = () => {
     label: '',
     type: 'checkbox'
   });
+  
+  // State for editing existing items
+  const [editingItem, setEditingItem] = useState(null);
+  const [editItemData, setEditItemData] = useState(null);
   
   // Clear success message after a delay
   useEffect(() => {
@@ -3880,9 +3880,28 @@ const DailyLogSettings = () => {
           return category;
         }
         
+        // If this is a select type, add default options (0-10 range)
+        let finalItemData = { ...newItemData, id: itemId };
+        
+        if (finalItemData.type === 'select' && (!finalItemData.options || finalItemData.options.length === 0)) {
+          finalItemData.options = [
+            { value: '0', label: '0 - None' },
+            { value: '1', label: '1' },
+            { value: '2', label: '2' },
+            { value: '3', label: '3' },
+            { value: '4', label: '4' },
+            { value: '5', label: '5 - Average' },
+            { value: '6', label: '6' },
+            { value: '7', label: '7' },
+            { value: '8', label: '8' },
+            { value: '9', label: '9' },
+            { value: '10', label: '10 - Maximum' }
+          ];
+        }
+        
         return {
           ...category,
-          items: [...category.items, { ...newItemData, id: itemId }]
+          items: [...category.items, finalItemData]
         };
       }
       return category;
@@ -3922,14 +3941,42 @@ const DailyLogSettings = () => {
   };
   
   // Handle editing an item
-  const handleEditItem = async (categoryId, itemId, updatedItem) => {
+  const handleEditItem = async (categoryId, itemId, updatedItemData) => {
+    console.log("Editing item:", itemId, "with data:", updatedItemData);
+    
+    // Make sure label is not empty
+    if (!updatedItemData.label || !updatedItemData.label.trim()) {
+      setError("Item label cannot be empty");
+      return;
+    }
+    
     const updatedCategories = categories.map(category => {
       if (category.id === categoryId) {
         return {
           ...category,
           items: category.items.map(item => {
             if (item.id === itemId) {
-              return { ...item, ...updatedItem };
+              // Make sure to keep the options if this is a select type
+              const finalItem = { ...item, ...updatedItemData };
+              
+              // If this is a select type and doesn't have options, add default options
+              if (finalItem.type === 'select' && (!finalItem.options || finalItem.options.length === 0)) {
+                finalItem.options = [
+                  { value: '0', label: '0 - None' },
+                  { value: '1', label: '1' },
+                  { value: '2', label: '2' },
+                  { value: '3', label: '3' },
+                  { value: '4', label: '4' },
+                  { value: '5', label: '5 - Average' },
+                  { value: '6', label: '6' },
+                  { value: '7', label: '7' },
+                  { value: '8', label: '8' },
+                  { value: '9', label: '9' },
+                  { value: '10', label: '10 - Maximum' }
+                ];
+              }
+              
+              return finalItem;
             }
             return item;
           })
@@ -3938,7 +3985,9 @@ const DailyLogSettings = () => {
       return category;
     });
     
+    console.log("Updated categories:", updatedCategories);
     setCategories(updatedCategories);
+    setSuccessMessage("Item updated successfully");
     
     // Save changes to Firestore immediately
     await saveCategories(updatedCategories);
