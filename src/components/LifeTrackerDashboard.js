@@ -1919,37 +1919,15 @@ const LifeTrackerDashboard = () => {
                     Athlete: {stravaData.athlete.firstname} {stravaData.athlete.lastname}
                   </p>
                 )}
+                {stravaAutoRefresh && (
+                  <p className="text-sm text-orange-300 mt-1">
+                    Auto-sync: Every {stravaRefreshInterval} minutes
+                  </p>
+                )}
               </div>
               
-              <div className="flex space-x-3">
-                <button
-                  onClick={fetchStravaData}
-                  disabled={isLoadingStrava}
-                  className="px-4 py-2 bg-orange-700 hover:bg-orange-600 rounded-lg text-white text-sm"
-                >
-                  {isLoadingStrava ? "Syncing..." : "Sync Now"}
-                </button>
-                
-                <button
-                  onClick={importStravaData}
-                  disabled={isLoading || isLoadingStrava}
-                  className="px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded-lg text-white text-sm"
-                >
-                  {isLoading ? "Importing..." : "Import to Health Metrics"}
-                </button>
-                
-                <button
-                  onClick={() => {
-                    if (window.confirm("Are you sure you want to disconnect from Strava?")) {
-                      disconnectFromStrava();
-                    }
-                  }}
-                  className="px-4 py-2 bg-red-700 hover:bg-red-600 rounded-lg text-white text-sm"
-                >
-                  Disconnect
-                </button>
-              </div>
-            </div>
+              {/* Keep existing buttons */}
+            </div>  
             
             {isLoadingStrava ? (
               <div className="text-center py-10">
@@ -2117,11 +2095,67 @@ const LifeTrackerDashboard = () => {
           </div>
         )}
       </div>
+
     );
+    {renderStravaAutoRefreshControls()}
   };
   
   
-  // GoalProgressBar component removed
+  const renderStravaAutoRefreshControls = () => {
+    return (
+      <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 mt-4">
+        <h4 className="text-lg font-medium mb-3 text-gray-200">Auto-Sync Settings</h4>
+        
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="stravaAutoRefresh"
+              checked={stravaAutoRefresh}
+              onChange={() => setStravaAutoRefresh(!stravaAutoRefresh)}
+              className="mr-2 h-4 w-4"
+            />
+            <label htmlFor="stravaAutoRefresh" className="text-gray-300">
+              Auto-sync Strava data
+            </label>
+          </div>
+          
+          {lastStravaSync && (
+            <div className="text-sm text-gray-400">
+              Last auto-sync: {lastStravaSync.toLocaleString()}
+            </div>
+          )}
+        </div>
+        
+        {stravaAutoRefresh && (
+          <div className="flex items-center">
+            <label htmlFor="stravaRefreshInterval" className="text-sm text-gray-300 mr-3">
+              Sync every
+            </label>
+            <select
+              id="stravaRefreshInterval"
+              value={stravaRefreshInterval}
+              onChange={(e) => setStravaRefreshInterval(Number(e.target.value))}
+              className="bg-gray-700 border border-gray-600 rounded text-white px-2 py-1"
+            >
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="60">1 hour</option>
+              <option value="120">2 hours</option>
+              <option value="360">6 hours</option>
+              <option value="720">12 hours</option>
+              <option value="1440">24 hours</option>
+            </select>
+          </div>
+        )}
+        
+        <div className="mt-3 text-xs text-gray-500">
+          Note: Frequent syncing may cause rate limiting from Strava's API. 
+          We recommend syncing no more than once per hour.
+        </div>
+      </div>
+    );
+  };
   
   // Health Metric Form component
   const HealthMetricForm = () => {
@@ -3163,25 +3197,185 @@ const LifeTrackerDashboard = () => {
     );
   };
 
-  // New Function for Database Tab
-  const renderDatabaseTab = () => {
-    const DatabaseManager = React.lazy(() => import('./DatabaseManager'));
-    
-    return (
-      <React.Suspense fallback={
-        <div className="text-center p-8">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-500 border-r-transparent"></div>
-          <p className="mt-4 text-gray-300">Loading database manager...</p>
-        </div>
-      }>
+// Updated renderDatabaseTab function with complete Strava functionality
+const renderDatabaseTab = () => {
+  const DatabaseManager = React.lazy(() => import('./DatabaseManager'));
+  
+  return (
+    <React.Suspense fallback={
+      <div className="text-center p-8">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-500 border-r-transparent"></div>
+        <p className="mt-4 text-gray-300">Loading database manager...</p>
+      </div>
+    }>
+      <div>
+        {/* Original Database Manager */}
         <DatabaseManager 
           isAuthenticated={isAuthenticated} 
           auth={auth}
           setError={setError}
         />
-      </React.Suspense>
-    );
-  };
+        
+        {/* Strava Section */}
+        {isAuthenticated && stravaService && (
+          <div className="mt-8 pt-6 border-t border-gray-700">
+            <h2 className="text-xl font-bold mb-4 text-gray-100">Strava Integration</h2>
+            
+            {isStravaConnected ? (
+              <div>
+                <div className="bg-orange-900 text-orange-100 p-4 rounded-lg mb-6 flex justify-between items-center">
+                  <div>
+                    <p className="font-medium">Connected to Strava</p>
+                    {stravaData?.lastUpdated && (
+                      <p className="text-sm text-orange-300 mt-1">
+                        Last updated: {new Date(stravaData.lastUpdated).toLocaleString()}
+                      </p>
+                    )}
+                    {stravaData?.athlete && (
+                      <p className="text-sm text-orange-300 mt-1">
+                        Athlete: {stravaData.athlete.firstname} {stravaData.athlete.lastname}
+                      </p>
+                    )}
+                    {stravaAutoRefresh && (
+                      <p className="text-sm text-orange-300 mt-1">
+                        Auto-sync: Every {stravaRefreshInterval} minutes
+                      </p>
+                    )}
+                  </div>
+                  
+                  <div className="flex space-x-3">
+                      <button
+                        onClick={fetchStravaData}
+                        disabled={isLoadingStrava}
+                        className="px-4 py-2 bg-orange-700 hover:bg-orange-600 rounded-lg text-white text-sm"
+                      >
+                        {isLoadingStrava ? "Syncing & Importing..." : "Sync Now"}
+                      </button>
+                      
+                      <button
+                        onClick={() => {
+                          if (window.confirm("Are you sure you want to disconnect from Strava?")) {
+                            disconnectFromStrava();
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-700 hover:bg-red-600 rounded-lg text-white text-sm"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                </div>
+                
+                {/* Auto-refresh controls */}
+                <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 mb-6">
+                  <h4 className="text-lg font-medium mb-3 text-gray-200">Auto-Sync Settings</h4>
+                  
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="stravaAutoRefresh"
+                        checked={stravaAutoRefresh}
+                        onChange={() => setStravaAutoRefresh(!stravaAutoRefresh)}
+                        className="mr-2 h-4 w-4"
+                      />
+                      <label htmlFor="stravaAutoRefresh" className="text-gray-300">
+                        Auto-sync Strava data
+                      </label>
+                    </div>
+                    
+                    {lastStravaSync && (
+                      <div className="text-sm text-gray-400">
+                        Last auto-sync: {lastStravaSync.toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {stravaAutoRefresh && (
+                    <div className="flex items-center">
+                      <label htmlFor="stravaRefreshInterval" className="text-sm text-gray-300 mr-3">
+                        Sync every
+                      </label>
+                      <select
+                        id="stravaRefreshInterval"
+                        value={stravaRefreshInterval}
+                        onChange={(e) => setStravaRefreshInterval(Number(e.target.value))}
+                        className="bg-gray-700 border border-gray-600 rounded text-white px-2 py-1"
+                      >
+                        <option value="15">15 minutes</option>
+                        <option value="30">30 minutes</option>
+                        <option value="60">1 hour</option>
+                        <option value="120">2 hours</option>
+                        <option value="360">6 hours</option>
+                        <option value="720">12 hours</option>
+                        <option value="1440">24 hours</option>
+                      </select>
+                    </div>
+                  )}
+                  
+                  <div className="mt-3 text-xs text-gray-500">
+                    Note: Frequent syncing may cause rate limiting from Strava's API. 
+                    We recommend syncing no more than once per hour.
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
+                <h3 className="text-xl font-semibold mb-4 text-gray-200">Connect to Strava</h3>
+                <p className="text-gray-400 mb-6">
+                  Connect your Strava account to automatically sync your activities, routes, and performance stats.
+                </p>
+                
+                <div className="text-center">
+                  {process.env.REACT_APP_STRAVA_CLIENT_ID && 
+                   process.env.REACT_APP_STRAVA_CLIENT_ID !== '' ? (
+                    <>
+                      <button
+                        onClick={connectToStrava}
+                        disabled={isLoadingStrava || !stravaService}
+                        className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-md flex items-center justify-center mx-auto"
+                      >
+                        {isLoadingStrava ? (
+                          <>
+                            <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-solid border-white border-t-transparent"></div>
+                            Connecting...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169" />
+                            </svg>
+                            Connect to Strava
+                          </>
+                        )}
+                      </button>
+                      
+                      <p className="mt-4 text-xs text-gray-500">
+                        You'll be redirected to Strava to authorize access to your activities.
+                        Your data is stored securely and only used within this app.
+                      </p>
+                    </>
+                  ) : (
+                    <div className="bg-yellow-800 p-4 rounded-lg text-yellow-100 max-w-lg mx-auto">
+                      <h4 className="font-bold mb-2">Strava Setup Required</h4>
+                      <p className="mb-2">Strava integration requires additional setup:</p>
+                      <ol className="list-decimal pl-5 mb-3 text-left text-sm space-y-1">
+                        <li>Create an application on Strava API portal</li>
+                        <li>Configure your API keys in the Settings</li>
+                        <li>Set up the callback URL for authentication</li>
+                        <li>Add your client ID and secret to the .env file</li>
+                      </ol>
+                      <p className="text-sm">Follow the instructions in the README for detailed setup.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </React.Suspense>
+  );
+};
 
 // Dynamic Daily Log Form Component Implementation
 const DailyLogForm = () => {
@@ -4491,7 +4685,6 @@ const DailyLogSettings = () => {
         {activeTab === 'wellbeing' && renderWellbeingTab()}
         {activeTab === 'health' && renderHealthTab()}
         {activeTab === 'dailylog' && renderDailyLogTab()}
-        {activeTab === 'strava' && renderStravaTab()}
         {activeTab === 'database' && renderDatabaseTab()}
         {activeTab === 'settings' && renderSettingsTab()}
         
@@ -4689,11 +4882,41 @@ const DailyLogSettings = () => {
   // Strava service is imported at the top of the file
   
   // Strava state
+  const [stravaAutoRefresh, setStravaAutoRefresh] = useState(true);
+  const [stravaRefreshInterval, setStravaRefreshInterval] = useState(60); // minutes
+  const [lastStravaSync, setLastStravaSync] = useState(null);
   const [stravaService, setStravaService] = useState(null);
   const [isStravaConnected, setIsStravaConnected] = useState(false);
   const [stravaData, setStravaData] = useState(null);
   const [isLoadingStrava, setIsLoadingStrava] = useState(false);
   const [stravaAuthCode, setStravaAuthCode] = useState(null);
+
+
+  // Add auto-refresh mechanism for Strava data
+useEffect(() => {
+  let intervalId;
+  
+  if (stravaAutoRefresh && isStravaConnected && stravaService) {
+    console.log(`Setting up Strava auto-refresh every ${stravaRefreshInterval} minutes`);
+    
+    // Initial fetch if no data exists
+    if (!stravaData) {
+      fetchStravaData();
+    }
+    
+    intervalId = setInterval(() => {
+      console.log('Auto-refreshing Strava data...');
+      fetchStravaData();
+    }, stravaRefreshInterval * 60 * 1000); // Convert minutes to milliseconds
+  }
+  
+  return () => {
+    if (intervalId) {
+      console.log('Clearing Strava auto-refresh interval');
+      clearInterval(intervalId);
+    }
+  };
+}, [stravaAutoRefresh, stravaRefreshInterval, isStravaConnected, stravaService]);
   
   // Initialize Strava service when authenticated
   useEffect(() => {
@@ -4801,24 +5024,30 @@ const DailyLogSettings = () => {
     }
   };
   
-  // Fetch Strava data
-  const fetchStravaData = async () => {
-    if (!stravaService || !isStravaConnected) {
-      return;
-    }
+ // Modified fetchStravaData function with auto-import
+const fetchStravaData = async () => {
+  if (!stravaService || !isStravaConnected) {
+    return;
+  }
+  
+  setIsLoadingStrava(true);
+  
+  try {
+    const data = await stravaService.fetchData();
+    setStravaData(data);
+    setLastStravaSync(new Date()); // Update last sync time
     
-    setIsLoadingStrava(true);
+    // Automatically import after successful sync
+    console.log('Auto-importing Strava data to health metrics...');
+    await importStravaData();
     
-    try {
-      const data = await stravaService.fetchData();
-      setStravaData(data);
-    } catch (error) {
-      console.error('Error fetching Strava data:', error);
-      setError(`Error fetching Strava data: ${error.message}`);
-    } finally {
-      setIsLoadingStrava(false);
-    }
-  };
+  } catch (error) {
+    console.error('Error fetching Strava data:', error);
+    setError(`Error fetching Strava data: ${error.message}`);
+  } finally {
+    setIsLoadingStrava(false);
+  }
+};
   
   // Import Strava data to health metrics
   const importStravaData = async () => {
@@ -4849,11 +5078,10 @@ const DailyLogSettings = () => {
     
     const tabs = [
       { id: 'overview', label: 'Overview' },
+      { id: 'dailylog', label: 'Daily Log' },
       { id: 'health', label: 'Health' },
       { id: 'wellbeing', label: 'Wellbeing' },
       { id: 'social', label: 'Social' },
-      { id: 'dailylog', label: 'Daily Log' },
-      { id: 'strava', label: 'Strava' },
       { id: 'database', label: 'Database' },
       { id: 'settings', label: 'Settings' } 
     ];
