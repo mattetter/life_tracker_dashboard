@@ -3,6 +3,8 @@ import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, A
 import _ from 'lodash';
 import { initializeApp } from 'firebase/app';
 import StravaService from './StravaService';
+import HealthTab from './HealthTab';
+import { auth, db } from '../firebase';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
@@ -26,20 +28,6 @@ import {
   limit
 } from 'firebase/firestore';
 
-// Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyBHKkBufXHXSRFilD058dp-HsPdboSCY5Q",
-  authDomain: "life-tracker-dashboard.firebaseapp.com",
-  projectId: "life-tracker-dashboard",
-  storageBucket: "life-tracker-dashboard.firebasestorage.app",
-  messagingSenderId: "503693529929",
-  appId: "1:503693529929:web:49f39138be913339ffc098"
-};
-
-// Initialize Firebase
-const firebaseApp = initializeApp(firebaseConfig);
-const auth = getAuth(firebaseApp);
-const db = getFirestore(firebaseApp);
 
 const LifeTrackerDashboard = () => {
   // Core state
@@ -81,14 +69,19 @@ const LifeTrackerDashboard = () => {
     },
     health: {
       strengthChallengeTarget: { value: 400 },
-      sleepOnTimePercentage: { value: 90 }
+      sleepOnTimePercentage: { value: 90 },
+      vo2maxTarget: {
+        value: 0,
+        targetDate: '',
+        initial: 0,
+        current: 0,
+        createdAt: new Date().toISOString()
+      },
+      LDL: { value: 100 },
+      HDL: { value: 60 },
+      BPsystolic: { value: 120 },
+      BPdiastolic: { value: 80 },
     },
-    productivity: {
-      languageDaysPercentage: { value: 50 },
-      mathDaysPercentage: { value: 50 },
-      codeDaysPercentage: { value: 50 },
-      lessonsPerMonth: { value: 4 }
-    }
   });
   
   // Auto-refresh state
@@ -2607,412 +2600,14 @@ const LifeTrackerDashboard = () => {
     return groupedActivities;
   };
 
-// Health Metrics Form Component
-const HealthMetricsForm = ({ onSubmit, onCancel }) => {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [metricFormData, setMetricFormData] = useState({
-    weight: '',
-    systolic: '',
-    diastolic: '',
-    ldl: '',
-    hdl: '',
-    vo2max: '',
-    notes: '',
-    source: 'manual'
-  });
   
-  // Handle form input changes
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setMetricFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-  
-  // Handle form submission
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Validate form - require at least one metric to be filled
-    const hasMetricData = ['weight', 'systolic', 'diastolic', 'ldl', 'hdl', 'vo2max']
-      .some(field => metricFormData[field] && metricFormData[field].trim() !== '');
-    
-    if (!hasMetricData) {
-      setError('Please enter at least one health metric value');
-      return;
-    }
-    
-    try {
-      setIsSubmitting(true);
-      await onSubmit(metricFormData);
-      
-      // Reset form
-      setMetricFormData({
-        weight: '',
-        systolic: '',
-        diastolic: '',
-        ldl: '',
-        hdl: '',
-        vo2max: '',
-        notes: '',
-        source: 'manual'
-      });
-      
-    } catch (error) {
-      console.error("Error in health metrics form:", error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-  
-  return (
-    <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700 mb-8">
-      <h3 className="text-xl font-semibold mb-4 text-gray-100">Record Health Metrics</h3>
-      
-      <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div>
-            <label htmlFor="weight" className="block text-sm font-medium mb-1 text-gray-300">
-              Weight (lbs)
-            </label>
-            <input
-              type="number"
-              id="weight"
-              name="weight"
-              value={metricFormData.weight}
-              onChange={handleChange}
-              placeholder="Enter weight"
-              className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              step="0.1"
-              min="0"
-            />
-          </div>
-          
-          <div>
-            <label htmlFor="vo2max" className="block text-sm font-medium mb-1 text-gray-300">
-              VO2 Max (ml/kg/min)
-            </label>
-            <input
-              type="number"
-              id="vo2max"
-              name="vo2max"
-              value={metricFormData.vo2max}
-              onChange={handleChange}
-              placeholder="Enter VO2 Max"
-              className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              step="0.1"
-              min="0"
-            />
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">
-              Blood Pressure (mmHg)
-            </label>
-            <div className="flex space-x-2">
-              <div className="flex-1">
-                <input
-                  type="number"
-                  id="systolic"
-                  name="systolic"
-                  value={metricFormData.systolic}
-                  onChange={handleChange}
-                  placeholder="Systolic"
-                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  min="0"
-                />
-              </div>
-              <span className="text-gray-400 flex items-center">/</span>
-              <div className="flex-1">
-                <input
-                  type="number"
-                  id="diastolic"
-                  name="diastolic"
-                  value={metricFormData.diastolic}
-                  onChange={handleChange}
-                  placeholder="Diastolic"
-                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  min="0"
-                />
-              </div>
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">
-              Cholesterol (mg/dL)
-            </label>
-            <div className="flex space-x-2">
-              <div className="flex-1">
-                <input
-                  type="number"
-                  id="ldl"
-                  name="ldl"
-                  value={metricFormData.ldl}
-                  onChange={handleChange}
-                  placeholder="LDL"
-                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  min="0"
-                />
-                <span className="text-xs text-gray-400">LDL</span>
-              </div>
-              <div className="flex-1">
-                <input
-                  type="number"
-                  id="hdl"
-                  name="hdl"
-                  value={metricFormData.hdl}
-                  onChange={handleChange}
-                  placeholder="HDL"
-                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  min="0"
-                />
-                <span className="text-xs text-gray-400">HDL</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="mb-4">
-          <label htmlFor="notes" className="block text-sm font-medium mb-1 text-gray-300">
-            Notes (optional)
-          </label>
-          <textarea
-            id="notes"
-            name="notes"
-            value={metricFormData.notes}
-            onChange={handleChange}
-            placeholder="Add any additional details or context"
-            className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-            rows={2}
-          ></textarea>
-        </div>
-        
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-md mr-3"
-            disabled={isSubmitting}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? (
-              <>
-                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-solid border-white border-t-transparent"></div>
-                Saving...
-              </>
-            ) : (
-              "Save Health Metrics"
-            )}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-};
-
-// Health Tab Component 
-const HealthTab = () => {
-  const [showForm, setShowForm] = useState(false);
-    
-  // vo2max goal stuff
-  const [showVO2MaxGoalForm, setShowVO2MaxGoalForm] = useState(false);
-  const [vo2MaxGoal, setVO2MaxGoal] = useState({
-    current: 49,
-    target: 53,
-    targetDate: ''
-  });
-
-    // load the VO2 max goal when the component mounts
-    useEffect(() => {
-      // Load VO2 max goal from Firestore
-      const loadVO2MaxGoal = async () => {
-        if (!auth.currentUser) return;
-        
-        try {
-          const goalDoc = await getDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'healthGoals'));
-          
-          if (goalDoc.exists() && goalDoc.data().vo2max) {
-            const vo2maxData = goalDoc.data().vo2max;
-            
-            // Update the local state with the goal from Firestore
-            setVO2MaxGoal({
-              initial: vo2maxData.initial || 0,
-              current: vo2maxData.current || 0,
-              target: vo2maxData.target || 45,
-              targetDate: vo2maxData.targetDate 
-                ? vo2maxData.targetDate.toDate().toISOString().split('T')[0] 
-                : '',
-              createdAt: vo2maxData.createdAt 
-                ? vo2maxData.createdAt.toDate().toISOString() 
-                : new Date().toISOString()
-            });
-            
-            // Also update the global goals state
-            setGoals(prevGoals => ({
-              ...prevGoals,
-              health: {
-                ...prevGoals.health,
-                vo2maxTarget: {
-                  value: vo2maxData.target || 45,
-                  targetDate: vo2maxData.targetDate 
-                    ? vo2maxData.targetDate.toDate().toISOString().split('T')[0]
-                    : '',
-                  initial: vo2maxData.initial || 0,
-                  createdAt: vo2maxData.createdAt 
-                    ? vo2maxData.createdAt.toDate().toISOString() 
-                    : new Date().toISOString()
-                }
-              }
-            }));
-          }
-        } catch (error) {
-          console.error("Error loading VO2 max goal:", error);
-        }
-      };
-      
-      loadVO2MaxGoal();
-    }, [auth.currentUser, db]);
-
-  // Updated save function to store initial VO2 max value
-  const saveVO2MaxGoal = async (e) => {
-    e.preventDefault();
-    
-    if (!auth.currentUser) {
-      setError('You must be signed in to set goals');
-      return;
-    }
-    
-    try {
-      // Find the most recent VO2 max measurement to use as initial value
-      let initialVO2Max = null;
-      
-      // Query health metrics to find the most recent VO2 max measurement
-      const q = query(
-        collection(db, 'users', auth.currentUser.uid, 'healthMetrics'),
-        orderBy('date', 'desc'),
-        limit(10) // Get recent measurements for efficiency
-      );
-      
-      const querySnapshot = await getDocs(q);
-      
-      // Find the first health metric with VO2 max data
-      for (const doc of querySnapshot.docs) {
-        const data = doc.data();
-        if (data.vo2max && !isNaN(parseFloat(data.vo2max))) {
-          initialVO2Max = parseFloat(data.vo2max);
-          break;
-        }
-      }
-      
-      // If no measurement found, use a default or the target - 10%
-      if (initialVO2Max === null) {
-        initialVO2Max = parseFloat(vo2MaxGoal.target) * 0.9; // Default to 90% of target as starting point
-      }
-      
-      // Format the data for Firestore with the initial value
-      const goalData = {
-        initial: initialVO2Max,
-        current: initialVO2Max, // Set current to the same as initial at first
-        target: parseFloat(vo2MaxGoal.target),
-        targetDate: vo2MaxGoal.targetDate ? Timestamp.fromDate(new Date(vo2MaxGoal.targetDate)) : null,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
-      };
-      
-      // Save to Firestore
-      await setDoc(
-        doc(db, 'users', auth.currentUser.uid, 'settings', 'healthGoals'), 
-        { vo2max: goalData }, 
-        { merge: true }
-      );
-      
-      // Update the local state
-      setVO2MaxGoal({
-        ...vo2MaxGoal,
-        initial: initialVO2Max,
-        current: initialVO2Max
-      });
-      
-      // Update the global goals state
-      setGoals(prevGoals => ({
-        ...prevGoals,
-        health: {
-          ...prevGoals.health,
-          vo2maxTarget: {
-            value: parseFloat(vo2MaxGoal.target),
-            targetDate: vo2MaxGoal.targetDate,
-            initial: initialVO2Max,
-            createdAt: new Date().toISOString()
-          }
-        }
-      }));
-      
-      alert('VO2 max goal saved successfully!');
-      setShowVO2MaxGoalForm(false);
-    } catch (error) {
-      console.error("Error saving VO2 max goal:", error);
-      setError(`Error saving goal: ${error.message}`);
-    }
-  };
-  
-  // Function to update the current VO2 max value when new measurements are added
-  // This would be called after saving a new health metric that includes VO2 max
-  const updateCurrentVO2Max = async (newVO2MaxValue) => {
-    if (!auth.currentUser || !newVO2MaxValue) return;
-    
-    try {
-      // Update the current value in Firestore
-      await setDoc(
-        doc(db, 'users', auth.currentUser.uid, 'settings', 'healthGoals'), 
-        { 
-          vo2max: { 
-            current: parseFloat(newVO2MaxValue),
-            updatedAt: Timestamp.now()
-          } 
-        }, 
-        { merge: true }
-      );
-      
-      // Update the local state
-      setVO2MaxGoal(prev => ({
-        ...prev,
-        current: parseFloat(newVO2MaxValue)
-      }));
-      
-      // Update the global goals state too if needed
-      setGoals(prevGoals => {
-        if (prevGoals.health && prevGoals.health.vo2maxTarget) {
-          return {
-            ...prevGoals,
-            health: {
-              ...prevGoals.health,
-              vo2maxTarget: {
-                ...prevGoals.health.vo2maxTarget,
-                current: parseFloat(newVO2MaxValue)
-              }
-            }
-          };
-        }
-        return prevGoals;
-      });
-      
-    } catch (error) {
-      console.error("Error updating current VO2 max:", error);
-    }
-  };
-
   // Health metrics submission handler
   const handleMetricSubmit = async (formData) => {
+    if (!auth.currentUser) {
+      setError('You must be signed in to add health metrics');
+      return;
+    }
+    
     try {
       // Add to the healthMetrics collection
       await addDoc(collection(db, 'users', auth.currentUser.uid, 'healthMetrics'), {
@@ -3024,141 +2619,41 @@ const HealthTab = () => {
       // Show success message
       alert('Health metrics saved successfully');
       
-      // Close form
-      setShowForm(false);
+      // Refresh health metrics
+      fetchHealthMetrics();
       
-      // Refresh health metrics if you have that function
-      if (typeof fetchHealthMetrics === 'function') {
-        fetchHealthMetrics();
-      }
-      
+      return true;
     } catch (error) {
       console.error("Error saving health metrics:", error);
       setError(`Failed to save health metrics: ${error.message}`);
-      throw error; // Re-throw to be caught by the form component
+      throw error;
     }
   };
   
-  return (
-    <div className="p-4">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-100">Health Dashboard</h2>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white"
-        >
-          {showForm ? 'Cancel' : 'Add Health Metrics'}
-        </button>
-      </div>
-      
-      {/* Health Metrics Form */}
-      {showForm && (
-        <HealthMetricsForm 
-          onSubmit={handleMetricSubmit} 
-          onCancel={() => setShowForm(false)} 
-        />
-      )}
-      
-      <p className="text-gray-400 mb-6">This tab displays your health metrics and allows you to add new measurements.</p>
-
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-100">Health Dashboard</h2>
-        <button
-          onClick={() => setShowVO2MaxGoalForm(!showVO2MaxGoalForm)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white"
-        >
-          {showVO2MaxGoalForm ? 'Cancel' : 'Set VO2 Max Goal'}
-        </button>
-      </div>
-
-      {/* VO2 Max Goal Form */}
-      {showVO2MaxGoalForm && (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700 mb-6">
-          <h3 className="text-xl font-semibold mb-4 text-gray-100">Set VO2 Max Goal</h3>
-          
-          <form onSubmit={saveVO2MaxGoal}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label htmlFor="targetVO2Max" className="block text-sm font-medium mb-1 text-gray-300">
-                  Target VO2 Max (ml/kg/min)
-                </label>
-                <input
-                  type="number"
-                  id="targetVO2Max"
-                  value={vo2MaxGoal.target}
-                  onChange={(e) => setVO2MaxGoal({...vo2MaxGoal, target: e.target.value})}
-                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  step="0.1"
-                  min="0"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label htmlFor="targetDate" className="block text-sm font-medium mb-1 text-gray-300">
-                  Target Date
-                </label>
-                <input
-                  type="date"
-                  id="targetDate"
-                  value={vo2MaxGoal.targetDate}
-                  onChange={(e) => setVO2MaxGoal({...vo2MaxGoal, targetDate: e.target.value})}
-                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                  required
-                />
-              </div>
-            </div>
-            
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
-            >
-              Save VO2 Max Goal
-            </button>
-          </form>
-        </div>
-      )}
-
-
-      {!showVO2MaxGoalForm && goals.health?.vo2maxTarget?.targetDate && (
-        <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
-          <h3 className="text-lg font-semibold mb-3 text-gray-200">VO2 Max Goal</h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="text-sm font-medium text-gray-300">Target VO2 Max</span>
-                <span className="text-sm font-medium text-gray-300">
-                  {goals.health.vo2maxTarget.value} ml/kg/min
-                </span>
-              </div>
-              <div className="flex justify-between mb-3">
-                <span className="text-sm font-medium text-gray-300">Target Date</span>
-                <span className="text-sm font-medium text-gray-300">
-                  {new Date(goals.health.vo2maxTarget.targetDate).toLocaleDateString()}
-                </span>
-              </div>
-            </div>
-          </div>
-          
-          <button
-            onClick={() => setShowVO2MaxGoalForm(true)}
-            className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-sm text-white rounded"
-          >
-            Update Goal
-          </button>
-        </div>
-      )}
-    </div>
-    
-
-  );
-};
-
-//renderHealthTab function 
-const renderHealthTab = () => {
-  return <HealthTab />;
-};
+  // Fetch metrics when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchHealthMetrics();
+    }
+  }, [isAuthenticated, fetchHealthMetrics]);
+  
+  // Your existing functions...
+  
+  // Modify your renderHealthTab function
+  const renderHealthTab = () => {
+    return (
+      <HealthTab
+        healthMetrics={healthMetrics}
+        isLoadingHealthMetrics={isLoadingHealthMetrics}
+        goals={goals}
+        setGoals={setGoals}
+        error={error}
+        setError={setError}
+        handleMetricSubmit={handleMetricSubmit}
+        fetchHealthMetrics={fetchHealthMetrics}
+      />
+    );
+  };
 
 
   const renderProductivityTab = () => {
