@@ -231,12 +231,6 @@ const HealthTab = ({
             >
               {showForm ? 'Cancel' : 'Add Health Metrics'}
             </button>
-            <button
-              onClick={() => setShowVO2MaxGoalForm(!showVO2MaxGoalForm)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white"
-            >
-              {showVO2MaxGoalForm ? 'Cancel' : 'Set VO2 Max Goal'}
-            </button>
           </div>
         </div>
         
@@ -306,27 +300,45 @@ const HealthTab = ({
         {/* VO2max display */}
         {!showVO2MaxGoalForm && goals.health?.vo2maxTarget?.targetDate && (
         <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
-            <h3 className="text-lg font-semibold mb-3 text-gray-200">VO2 Max Goal</h3>
+          <h3 className="text-lg font-semibold mb-3 text-gray-200">VO2 Max Goal</h3>
+          
+          <div className="flex flex-wrap items-center">
+            <div className="w-full lg:w-3/4">
+              {/* VO2Max Goal Tracker Visualization */}
+              <VO2MaxGoalTracker goalData={goals.health.vo2maxTarget} />
+            </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div>
-                <div className="flex justify-between mb-1">
+            <div className="w-full lg:w-1/4 mt-4 lg:mt-0 flex flex-col lg:pl-4">
+              <div className="flex justify-between mb-3">
                 <span className="text-sm font-medium text-gray-300">Target VO2 Max</span>
                 <span className="text-sm font-medium text-gray-300">
-                    {goals.health.vo2maxTarget.value}
+                  {goals.health.vo2maxTarget.value}
                 </span>
-                </div>
-                
+              </div>
+              
+              {/* Set VO2 Max Goal button moved down beside the chart */}
+              <button
+                onClick={() => setShowVO2MaxGoalForm(!showVO2MaxGoalForm)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white mt-auto"
+              >
+                Set VO2 Max Goal
+              </button>
             </div>
-            
-            {/* VO2Max Goal Tracker Visualization */}
-            <div className="col-span-1 lg:col-span-1">
-                <VO2MaxGoalTracker goalData={goals.health.vo2maxTarget} />
-            </div>
-            </div>
+          </div>
         </div>
         )}
 
+        {/* Show the Set VO2 Max Goal button if no goal is set yet */}
+        {!showVO2MaxGoalForm && !goals.health?.vo2maxTarget?.targetDate && (
+          <div className="flex justify-center mb-6">
+            <button
+              onClick={() => setShowVO2MaxGoalForm(true)}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white"
+            >
+              Set VO2 Max Goal
+            </button>
+          </div>
+        )}
 
         {/* You can add more complex elements here */}
       </div>
