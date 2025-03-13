@@ -27,7 +27,8 @@ export const GOALS_SCHEMA = {
   dailySteps: 'number',
   weeklyRuns: 'number',
   weeklyStrengthTraining: 'number',
-  updatedAt: 'timestamp'
+  updatedAt: 'timestamp',
+  vo2maxTarget: { value: 45, targetDate: '' }
 };
 
 // Daily Log Schema
@@ -159,7 +160,7 @@ export const COLLECTIONS = {
   JOURNAL: 'journal',
   HEALTH_METRICS: 'healthMetrics',
   PROJECTS: 'projects',
-  STRAVA_CONNECTION: 'settings/strava',   // Changed to match existing path
+  STRAVA_CONNECTION: 'settings/strava',
   STRAVA_DATA: 'strava/data',
   STRAVA_IMPORTED: 'strava/imported'
 };

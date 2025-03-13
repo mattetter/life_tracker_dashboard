@@ -22,7 +22,8 @@ import {
   setDoc,
   getDoc,
   deleteDoc,
-  onSnapshot
+  onSnapshot,
+  limit
 } from 'firebase/firestore';
 
 // Firebase configuration
@@ -2819,10 +2820,197 @@ const HealthMetricsForm = ({ onSubmit, onCancel }) => {
   );
 };
 
-// Health Tab Component - Replace your renderHealthTab function with this
+// Health Tab Component 
 const HealthTab = () => {
   const [showForm, setShowForm] = useState(false);
+    
+  // vo2max goal stuff
+  const [showVO2MaxGoalForm, setShowVO2MaxGoalForm] = useState(false);
+  const [vo2MaxGoal, setVO2MaxGoal] = useState({
+    current: 49,
+    target: 53,
+    targetDate: ''
+  });
+
+    // load the VO2 max goal when the component mounts
+    useEffect(() => {
+      // Load VO2 max goal from Firestore
+      const loadVO2MaxGoal = async () => {
+        if (!auth.currentUser) return;
+        
+        try {
+          const goalDoc = await getDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'healthGoals'));
+          
+          if (goalDoc.exists() && goalDoc.data().vo2max) {
+            const vo2maxData = goalDoc.data().vo2max;
+            
+            // Update the local state with the goal from Firestore
+            setVO2MaxGoal({
+              initial: vo2maxData.initial || 0,
+              current: vo2maxData.current || 0,
+              target: vo2maxData.target || 45,
+              targetDate: vo2maxData.targetDate 
+                ? vo2maxData.targetDate.toDate().toISOString().split('T')[0] 
+                : '',
+              createdAt: vo2maxData.createdAt 
+                ? vo2maxData.createdAt.toDate().toISOString() 
+                : new Date().toISOString()
+            });
+            
+            // Also update the global goals state
+            setGoals(prevGoals => ({
+              ...prevGoals,
+              health: {
+                ...prevGoals.health,
+                vo2maxTarget: {
+                  value: vo2maxData.target || 45,
+                  targetDate: vo2maxData.targetDate 
+                    ? vo2maxData.targetDate.toDate().toISOString().split('T')[0]
+                    : '',
+                  initial: vo2maxData.initial || 0,
+                  createdAt: vo2maxData.createdAt 
+                    ? vo2maxData.createdAt.toDate().toISOString() 
+                    : new Date().toISOString()
+                }
+              }
+            }));
+          }
+        } catch (error) {
+          console.error("Error loading VO2 max goal:", error);
+        }
+      };
+      
+      loadVO2MaxGoal();
+    }, [auth.currentUser, db]);
+
+  // Updated save function to store initial VO2 max value
+  const saveVO2MaxGoal = async (e) => {
+    e.preventDefault();
+    
+    if (!auth.currentUser) {
+      setError('You must be signed in to set goals');
+      return;
+    }
+    
+    try {
+      // Find the most recent VO2 max measurement to use as initial value
+      let initialVO2Max = null;
+      
+      // Query health metrics to find the most recent VO2 max measurement
+      const q = query(
+        collection(db, 'users', auth.currentUser.uid, 'healthMetrics'),
+        orderBy('date', 'desc'),
+        limit(10) // Get recent measurements for efficiency
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      // Find the first health metric with VO2 max data
+      for (const doc of querySnapshot.docs) {
+        const data = doc.data();
+        if (data.vo2max && !isNaN(parseFloat(data.vo2max))) {
+          initialVO2Max = parseFloat(data.vo2max);
+          break;
+        }
+      }
+      
+      // If no measurement found, use a default or the target - 10%
+      if (initialVO2Max === null) {
+        initialVO2Max = parseFloat(vo2MaxGoal.target) * 0.9; // Default to 90% of target as starting point
+      }
+      
+      // Format the data for Firestore with the initial value
+      const goalData = {
+        initial: initialVO2Max,
+        current: initialVO2Max, // Set current to the same as initial at first
+        target: parseFloat(vo2MaxGoal.target),
+        targetDate: vo2MaxGoal.targetDate ? Timestamp.fromDate(new Date(vo2MaxGoal.targetDate)) : null,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      };
+      
+      // Save to Firestore
+      await setDoc(
+        doc(db, 'users', auth.currentUser.uid, 'settings', 'healthGoals'), 
+        { vo2max: goalData }, 
+        { merge: true }
+      );
+      
+      // Update the local state
+      setVO2MaxGoal({
+        ...vo2MaxGoal,
+        initial: initialVO2Max,
+        current: initialVO2Max
+      });
+      
+      // Update the global goals state
+      setGoals(prevGoals => ({
+        ...prevGoals,
+        health: {
+          ...prevGoals.health,
+          vo2maxTarget: {
+            value: parseFloat(vo2MaxGoal.target),
+            targetDate: vo2MaxGoal.targetDate,
+            initial: initialVO2Max,
+            createdAt: new Date().toISOString()
+          }
+        }
+      }));
+      
+      alert('VO2 max goal saved successfully!');
+      setShowVO2MaxGoalForm(false);
+    } catch (error) {
+      console.error("Error saving VO2 max goal:", error);
+      setError(`Error saving goal: ${error.message}`);
+    }
+  };
   
+  // Function to update the current VO2 max value when new measurements are added
+  // This would be called after saving a new health metric that includes VO2 max
+  const updateCurrentVO2Max = async (newVO2MaxValue) => {
+    if (!auth.currentUser || !newVO2MaxValue) return;
+    
+    try {
+      // Update the current value in Firestore
+      await setDoc(
+        doc(db, 'users', auth.currentUser.uid, 'settings', 'healthGoals'), 
+        { 
+          vo2max: { 
+            current: parseFloat(newVO2MaxValue),
+            updatedAt: Timestamp.now()
+          } 
+        }, 
+        { merge: true }
+      );
+      
+      // Update the local state
+      setVO2MaxGoal(prev => ({
+        ...prev,
+        current: parseFloat(newVO2MaxValue)
+      }));
+      
+      // Update the global goals state too if needed
+      setGoals(prevGoals => {
+        if (prevGoals.health && prevGoals.health.vo2maxTarget) {
+          return {
+            ...prevGoals,
+            health: {
+              ...prevGoals.health,
+              vo2maxTarget: {
+                ...prevGoals.health.vo2maxTarget,
+                current: parseFloat(newVO2MaxValue)
+              }
+            }
+          };
+        }
+        return prevGoals;
+      });
+      
+    } catch (error) {
+      console.error("Error updating current VO2 max:", error);
+    }
+  };
+
   // Health metrics submission handler
   const handleMetricSubmit = async (formData) => {
     try {
@@ -2872,11 +3060,102 @@ const HealthTab = () => {
       )}
       
       <p className="text-gray-400 mb-6">This tab displays your health metrics and allows you to add new measurements.</p>
+
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold text-gray-100">Health Dashboard</h2>
+        <button
+          onClick={() => setShowVO2MaxGoalForm(!showVO2MaxGoalForm)}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white"
+        >
+          {showVO2MaxGoalForm ? 'Cancel' : 'Set VO2 Max Goal'}
+        </button>
+      </div>
+
+      {/* VO2 Max Goal Form */}
+      {showVO2MaxGoalForm && (
+        <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700 mb-6">
+          <h3 className="text-xl font-semibold mb-4 text-gray-100">Set VO2 Max Goal</h3>
+          
+          <form onSubmit={saveVO2MaxGoal}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label htmlFor="targetVO2Max" className="block text-sm font-medium mb-1 text-gray-300">
+                  Target VO2 Max (ml/kg/min)
+                </label>
+                <input
+                  type="number"
+                  id="targetVO2Max"
+                  value={vo2MaxGoal.target}
+                  onChange={(e) => setVO2MaxGoal({...vo2MaxGoal, target: e.target.value})}
+                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                  step="0.1"
+                  min="0"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="targetDate" className="block text-sm font-medium mb-1 text-gray-300">
+                  Target Date
+                </label>
+                <input
+                  type="date"
+                  id="targetDate"
+                  value={vo2MaxGoal.targetDate}
+                  onChange={(e) => setVO2MaxGoal({...vo2MaxGoal, targetDate: e.target.value})}
+                  className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                  required
+                />
+              </div>
+            </div>
+            
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+            >
+              Save VO2 Max Goal
+            </button>
+          </form>
+        </div>
+      )}
+
+
+      {!showVO2MaxGoalForm && goals.health?.vo2maxTarget?.targetDate && (
+        <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
+          <h3 className="text-lg font-semibold mb-3 text-gray-200">VO2 Max Goal</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-sm font-medium text-gray-300">Target VO2 Max</span>
+                <span className="text-sm font-medium text-gray-300">
+                  {goals.health.vo2maxTarget.value} ml/kg/min
+                </span>
+              </div>
+              <div className="flex justify-between mb-3">
+                <span className="text-sm font-medium text-gray-300">Target Date</span>
+                <span className="text-sm font-medium text-gray-300">
+                  {new Date(goals.health.vo2maxTarget.targetDate).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          <button
+            onClick={() => setShowVO2MaxGoalForm(true)}
+            className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-sm text-white rounded"
+          >
+            Update Goal
+          </button>
+        </div>
+      )}
     </div>
+    
+
   );
 };
 
-// Then update your renderHealthTab function to just return this component
+//renderHealthTab function 
 const renderHealthTab = () => {
   return <HealthTab />;
 };
