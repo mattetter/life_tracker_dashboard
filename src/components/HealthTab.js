@@ -255,8 +255,6 @@ const HealthTab = ({
           />
         )}
         
-        <p className="text-gray-400 mb-6">This tab displays your health metrics and allows you to add new measurements.</p>
-  
         {/* VO2 Max Goal Form */}
         {showVO2MaxGoalForm && (
           <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700 mb-6">
@@ -315,40 +313,10 @@ const HealthTab = ({
                 <div className="flex justify-between mb-1">
                 <span className="text-sm font-medium text-gray-300">Target VO2 Max</span>
                 <span className="text-sm font-medium text-gray-300">
-                    {goals.health.vo2maxTarget.value} ml/kg/min
-                </span>
-                </div>
-                <div className="flex justify-between mb-3">
-                <span className="text-sm font-medium text-gray-300">Target Date</span>
-                <span className="text-sm font-medium text-gray-300">
-                    {goals.health.vo2maxTarget.targetDate ? 
-                    new Date(goals.health.vo2maxTarget.targetDate).toLocaleDateString() : 
-                    'Not set'}
+                    {goals.health.vo2maxTarget.value}
                 </span>
                 </div>
                 
-                {/* Current value display */}
-                <div className="flex justify-between mb-3">
-                <span className="text-sm font-medium text-gray-300">Current VO2 Max</span>
-                <span className="text-sm font-medium text-gray-300">
-                    {goals.health.vo2maxTarget.current} ml/kg/min
-                </span>
-                </div>
-                
-                {/* Initial value display */}
-                <div className="flex justify-between mb-3">
-                <span className="text-sm font-medium text-gray-300">Initial VO2 Max</span>
-                <span className="text-sm font-medium text-gray-300">
-                    {goals.health.vo2maxTarget.initial} ml/kg/min
-                </span>
-                </div>
-                
-                <button
-                onClick={() => setShowVO2MaxGoalForm(true)}
-                className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-sm text-white rounded"
-                >
-                Update Goal
-                </button>
             </div>
             
             {/* VO2Max Goal Tracker Visualization */}
