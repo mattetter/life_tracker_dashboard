@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getDoc, setDoc, collection, doc, query, orderBy, limit, getDocs, Timestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase'; 
 import HealthMetricsForm from './HealthMetricsForm';
-
+import VO2MaxGoalTracker from './VO2MaxGoalTracker';
 
 
 const HealthTab = ({ 
@@ -304,40 +304,62 @@ const HealthTab = ({
             </form>
           </div>
         )}
-  
-        {/* Display current VO2 Max Goal if exists */}
+
+        {/* VO2max display */}
         {!showVO2MaxGoalForm && goals.health?.vo2maxTarget?.targetDate && (
-          <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
+        <div className="bg-gray-800 p-4 rounded-lg shadow border border-gray-700 mb-6">
             <h3 className="text-lg font-semibold mb-3 text-gray-200">VO2 Max Goal</h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div>
                 <div className="flex justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-300">Target VO2 Max</span>
-                  <span className="text-sm font-medium text-gray-300">
+                <span className="text-sm font-medium text-gray-300">Target VO2 Max</span>
+                <span className="text-sm font-medium text-gray-300">
                     {goals.health.vo2maxTarget.value} ml/kg/min
-                  </span>
+                </span>
                 </div>
                 <div className="flex justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-300">Target Date</span>
-                  <span className="text-sm font-medium text-gray-300">
+                <span className="text-sm font-medium text-gray-300">Target Date</span>
+                <span className="text-sm font-medium text-gray-300">
                     {goals.health.vo2maxTarget.targetDate ? 
-                      new Date(goals.health.vo2maxTarget.targetDate).toLocaleDateString() : 
-                      'Not set'}
-                  </span>
+                    new Date(goals.health.vo2maxTarget.targetDate).toLocaleDateString() : 
+                    'Not set'}
+                </span>
                 </div>
-              </div>
+                
+                {/* Current value display */}
+                <div className="flex justify-between mb-3">
+                <span className="text-sm font-medium text-gray-300">Current VO2 Max</span>
+                <span className="text-sm font-medium text-gray-300">
+                    {goals.health.vo2maxTarget.current} ml/kg/min
+                </span>
+                </div>
+                
+                {/* Initial value display */}
+                <div className="flex justify-between mb-3">
+                <span className="text-sm font-medium text-gray-300">Initial VO2 Max</span>
+                <span className="text-sm font-medium text-gray-300">
+                    {goals.health.vo2maxTarget.initial} ml/kg/min
+                </span>
+                </div>
+                
+                <button
+                onClick={() => setShowVO2MaxGoalForm(true)}
+                className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-sm text-white rounded"
+                >
+                Update Goal
+                </button>
             </div>
             
-            <button
-              onClick={() => setShowVO2MaxGoalForm(true)}
-              className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-sm text-white rounded"
-            >
-              Update Goal
-            </button>
-          </div>
+            {/* VO2Max Goal Tracker Visualization */}
+            <div className="col-span-1 lg:col-span-1">
+                <VO2MaxGoalTracker goalData={goals.health.vo2maxTarget} />
+            </div>
+            </div>
+        </div>
         )}
-        
+
+
         {/* You can add more complex elements here */}
       </div>
     );
