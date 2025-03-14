@@ -4,6 +4,7 @@ import _ from 'lodash';
 import { initializeApp } from 'firebase/app';
 import StravaService from './StravaService';
 import HealthTab from './HealthTab';
+import OverviewTab from './OverviewTab';
 import { auth, db } from '../firebase';
 import { 
   getAuth, 
@@ -3237,6 +3238,7 @@ const LifeTrackerDashboard = () => {
       </>
     );
   };
+
 
 // Updated renderDatabaseTab function with complete Strava functionality
 const renderDatabaseTab = () => {
