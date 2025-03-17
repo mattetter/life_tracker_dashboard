@@ -550,131 +550,178 @@ const LifeTrackerDashboard = () => {
   
   
   // Journal Entry Form component
-  const JournalEntryForm = ({ onSubmit, onSuccess }) => {
-    const [journalData, setJournalData] = useState({
+const JournalEntryForm = ({ onSubmit, onSuccess }) => {
+  // Use localStorage to persist draft entries
+  const [journalData, setJournalData] = useState(() => {
+    // Try to load saved draft from localStorage on initial render
+    const savedDraft = localStorage.getItem('journalDraft');
+    return savedDraft ? JSON.parse(savedDraft) : {
+      title: '',
+      content: '',
+      mood: '5',
+      journalType: 'Daily'
+    };
+  });
+  
+  // Auto-save draft to localStorage whenever journalData changes
+  useEffect(() => {
+    localStorage.setItem('journalDraft', JSON.stringify(journalData));
+  }, [journalData]);
+  
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setJournalData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await onSubmit(journalData);
+    
+    // Clear the draft after successful submission
+    localStorage.removeItem('journalDraft');
+    
+    // Reset form
+    setJournalData({
       title: '',
       content: '',
       mood: '5',
       journalType: 'Daily'
     });
     
-    const handleChange = (e) => {
-      const { name, value } = e.target;
-      setJournalData(prev => ({
-        ...prev,
-        [name]: value
-      }));
-    };
+    // Refresh entries
+    if (onSuccess) onSuccess();
+  };
+  
+  // Add a discard draft button
+  const handleDiscardDraft = () => {
+    if (journalData.content && !window.confirm('Are you sure you want to discard your draft?')) {
+      return;
+    }
     
-    const handleSubmit = async (e) => {
-      e.preventDefault();
-      await onSubmit(journalData);
+    localStorage.removeItem('journalDraft');
+    setJournalData({
+      title: '',
+      content: '',
+      mood: '5',
+      journalType: 'Daily'
+    });
+  };
+
+  return (
+    <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold text-gray-100">New Journal Entry</h3>
+        {(journalData.title || journalData.content) && (
+          <div className="text-xs bg-blue-900 text-blue-200 px-2 py-1 rounded">
+            Draft Saved
+          </div>
+        )}
+      </div>
       
-      // Reset form
-      setJournalData({
-        title: '',
-        content: '',
-        mood: '5',
-        journalType: 'Daily'
-      });
-      
-      // Refresh entries
-      if (onSuccess) onSuccess();
-    };
-    
-    return (
-      <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
-        <h3 className="text-lg font-semibold mb-4 text-gray-100">New Journal Entry</h3>
+      <form onSubmit={handleSubmit}>
+        <div className="mb-4">
+          <label htmlFor="title" className="block text-sm font-medium mb-1 text-gray-300">
+            Title (Optional)
+          </label>
+          <input
+            type="text"
+            id="title"
+            name="title"
+            value={journalData.title}
+            onChange={handleChange}
+            className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400"
+            placeholder="What's on your mind today?"
+          />
+        </div>
         
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label htmlFor="title" className="block text-sm font-medium mb-1 text-gray-300">
-              Title (Optional)
+        <div className="mb-4">
+          <label htmlFor="content" className="block text-sm font-medium mb-1 text-gray-300">
+            Journal Entry
+          </label>
+          <textarea
+            id="content"
+            name="content"
+            value={journalData.content}
+            onChange={handleChange}
+            className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400"
+            rows={6}
+            required
+            placeholder="Write your thoughts here..."
+          ></textarea>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label htmlFor="mood" className="block text-sm font-medium mb-1 text-gray-300">
+              Energy Level (0-10)
             </label>
-            <input
-              type="text"
-              id="title"
-              name="title"
-              value={journalData.title}
+            <select
+              id="mood"
+              name="mood"
+              value={journalData.mood}
               onChange={handleChange}
-              className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400"
-              placeholder="What's on your mind today?"
-            />
+              className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+            >
+              <option value="0">0 - Completely Drained</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5 - Average</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+              <option value="9">9</option>
+              <option value="10">10 - Fully Energized</option>
+            </select>
           </div>
           
-          <div className="mb-4">
-            <label htmlFor="content" className="block text-sm font-medium mb-1 text-gray-300">
-              Journal Entry
+          <div>
+            <label htmlFor="journalType" className="block text-sm font-medium mb-1 text-gray-300">
+              Entry Type
             </label>
-            <textarea
-              id="content"
-              name="content"
-              value={journalData.content}
+            <select
+              id="journalType"
+              name="journalType"
+              value={journalData.journalType}
               onChange={handleChange}
-              className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400"
-              rows={6}
-              required
-              placeholder="Write your thoughts here..."
-            ></textarea>
+              className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+            >
+              <option value="Morning">Morning</option>
+              <option value="Evening">Evening</option>
+              <option value="Daily">Daily</option>
+              <option value="Gratitude">Gratitude</option>
+              <option value="Reflection">Reflection</option>
+            </select>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label htmlFor="mood" className="block text-sm font-medium mb-1 text-gray-300">
-                Energy Level (0-10)
-              </label>
-              <select
-                id="mood"
-                name="mood"
-                value={journalData.mood}
-                onChange={handleChange}
-                className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              >
-                <option value="0">0 - Completely Drained</option>
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="5">5 - Average</option>
-                <option value="6">6</option>
-                <option value="7">7</option>
-                <option value="8">8</option>
-                <option value="9">9</option>
-                <option value="10">10 - Fully Energized</option>
-              </select>
-            </div>
-            
-            <div>
-              <label htmlFor="journalType" className="block text-sm font-medium mb-1 text-gray-300">
-                Entry Type
-              </label>
-              <select
-                id="journalType"
-                name="journalType"
-                value={journalData.journalType}
-                onChange={handleChange}
-                className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              >
-                <option value="Morning">Morning</option>
-                <option value="Evening">Evening</option>
-                <option value="Daily">Daily</option>
-                <option value="Gratitude">Gratitude</option>
-                <option value="Reflection">Reflection</option>
-              </select>
-            </div>
-          </div>
-          
+        </div>
+        
+        <div className="flex gap-2">
           <button
             type="submit"
-            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md"
+            className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md"
             disabled={isLoading}
           >
             {isLoading ? "Saving..." : "Save Journal Entry"}
           </button>
-        </form>
-      </div>
-    );
-  };
+          
+          {(journalData.title || journalData.content) && (
+            <button
+              type="button"
+              onClick={handleDiscardDraft}
+              className="py-2 px-4 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-md"
+            >
+              Discard
+            </button>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+};
 
   // Fetch data from Firestore
   const fetchFirestoreData = async () => {
