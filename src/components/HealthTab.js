@@ -26,7 +26,8 @@ const HealthTab = ({
     const [vo2MaxGoal, setVO2MaxGoal] = useState({
       current: 49,
       target: 53,
-      targetDate: ''
+      targetDate: '',
+      startDate: '' 
     });
   
     // Load VO2 max goal when component mounts
@@ -40,37 +41,46 @@ const HealthTab = ({
           if (goalDoc.exists() && goalDoc.data().vo2max) {
             const vo2maxData = goalDoc.data().vo2max;
             
-            // Update the local state
             setVO2MaxGoal({
-              initial: vo2maxData.initial || 0,
-              current: vo2maxData.current || 0,
-              target: vo2maxData.target || 45,
-              targetDate: vo2maxData.targetDate 
-                ? vo2maxData.targetDate.toDate().toISOString().split('T')[0] 
-                : '',
-              createdAt: vo2maxData.createdAt 
-                ? vo2maxData.createdAt.toDate().toISOString() 
-                : new Date().toISOString()
-            });
+                initial: vo2maxData.initial || 0,
+                current: vo2maxData.current || 0,
+                target: vo2maxData.target || 45,
+                targetDate: vo2maxData.targetDate 
+                  ? vo2maxData.targetDate.toDate().toISOString().split('T')[0] 
+                  : '',
+                startDate: vo2maxData.startDate
+                  ? vo2maxData.startDate.toDate().toISOString().split('T')[0]
+                  : vo2maxData.createdAt
+                    ? vo2maxData.createdAt.toDate().toISOString().split('T')[0]
+                    : '',
+                createdAt: vo2maxData.createdAt 
+                  ? vo2maxData.createdAt.toDate().toISOString() 
+                  : new Date().toISOString()
+              });
             
             // Update parent state
             setGoals(prevGoals => ({
-              ...prevGoals,
-              health: {
-                ...prevGoals.health,
-                vo2maxTarget: {
-                  value: vo2maxData.target || 45,
-                  targetDate: vo2maxData.targetDate 
-                    ? vo2maxData.targetDate.toDate().toISOString().split('T')[0]
-                    : '',
-                  initial: vo2maxData.initial || 0,
-                  current: vo2maxData.current || 0,
-                  createdAt: vo2maxData.createdAt 
-                    ? vo2maxData.createdAt.toDate().toISOString() 
-                    : new Date().toISOString()
+                ...prevGoals,
+                health: {
+                  ...prevGoals.health,
+                  vo2maxTarget: {
+                    value: vo2maxData.target || 45,
+                    targetDate: vo2maxData.targetDate 
+                      ? vo2maxData.targetDate.toDate().toISOString().split('T')[0]
+                      : '',
+                    startDate: vo2maxData.startDate
+                      ? vo2maxData.startDate.toDate().toISOString().split('T')[0]
+                      : vo2maxData.createdAt
+                        ? vo2maxData.createdAt.toDate().toISOString().split('T')[0]
+                        : '',
+                    initial: vo2maxData.initial || 0,
+                    current: vo2maxData.current || 0,
+                    createdAt: vo2maxData.createdAt 
+                      ? vo2maxData.createdAt.toDate().toISOString() 
+                      : new Date().toISOString()
+                  }
                 }
-              }
-            }));
+              }));
           }
         } catch (error) {
           console.error("Error loading VO2 max goal:", error);
@@ -115,13 +125,14 @@ const HealthTab = ({
         }
         
         const goalData = {
-          initial: initialVO2Max,
-          current: initialVO2Max,
-          target: parseFloat(vo2MaxGoal.target),
-          targetDate: vo2MaxGoal.targetDate ? Timestamp.fromDate(new Date(vo2MaxGoal.targetDate)) : null,
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now()
-        };
+            initial: initialVO2Max,
+            current: initialVO2Max,
+            target: parseFloat(vo2MaxGoal.target),
+            targetDate: vo2MaxGoal.targetDate ? Timestamp.fromDate(new Date(vo2MaxGoal.targetDate)) : null,
+            startDate: vo2MaxGoal.startDate ? Timestamp.fromDate(new Date(vo2MaxGoal.startDate)) : Timestamp.now(), 
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now()
+          };
         
         // Save to Firestore
         await setDoc(
@@ -139,17 +150,18 @@ const HealthTab = ({
         
         // Update parent state
         setGoals(prevGoals => ({
-          ...prevGoals,
-          health: {
+            ...prevGoals,
+            health: {
             ...prevGoals.health,
             vo2maxTarget: {
-              value: parseFloat(vo2MaxGoal.target),
-              targetDate: vo2MaxGoal.targetDate,
-              initial: initialVO2Max,
-              current: initialVO2Max,
-              createdAt: new Date().toISOString()
+                value: parseFloat(vo2MaxGoal.target),
+                targetDate: vo2MaxGoal.targetDate,
+                startDate: vo2MaxGoal.startDate, // Add this line
+                initial: initialVO2Max,
+                current: initialVO2Max,
+                createdAt: new Date().toISOString()
             }
-          }
+            }
         }));
         
         alert('VO2 max goal saved successfully!');
@@ -255,12 +267,12 @@ const HealthTab = ({
             <h3 className="text-xl font-semibold mb-4 text-gray-100">Set VO2 Max Goal</h3>
             
             <form onSubmit={saveVO2MaxGoal}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div>
-                  <label htmlFor="targetVO2Max" className="block text-sm font-medium mb-1 text-gray-300">
+                    <label htmlFor="targetVO2Max" className="block text-sm font-medium mb-1 text-gray-300">
                     Target VO2 Max (ml/kg/min)
-                  </label>
-                  <input
+                    </label>
+                    <input
                     type="number"
                     id="targetVO2Max"
                     value={vo2MaxGoal.target}
@@ -269,23 +281,37 @@ const HealthTab = ({
                     step="0.1"
                     min="0"
                     required
-                  />
+                    />
                 </div>
                 
                 <div>
-                  <label htmlFor="targetDate" className="block text-sm font-medium mb-1 text-gray-300">
+                    <label htmlFor="startDate" className="block text-sm font-medium mb-1 text-gray-300">
+                    Start Date
+                    </label>
+                    <input
+                    type="date"
+                    id="startDate"
+                    value={vo2MaxGoal.startDate}
+                    onChange={(e) => setVO2MaxGoal({...vo2MaxGoal, startDate: e.target.value})}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                    required
+                    />
+                </div>
+                
+                <div>
+                    <label htmlFor="targetDate" className="block text-sm font-medium mb-1 text-gray-300">
                     Target Date
-                  </label>
-                  <input
+                    </label>
+                    <input
                     type="date"
                     id="targetDate"
                     value={vo2MaxGoal.targetDate}
                     onChange={(e) => setVO2MaxGoal({...vo2MaxGoal, targetDate: e.target.value})}
                     className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-white"
                     required
-                  />
+                    />
                 </div>
-              </div>
+                </div>
               
               <button
                 type="submit"

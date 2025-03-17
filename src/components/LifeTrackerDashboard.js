@@ -5080,9 +5080,10 @@ const fetchStravaData = async () => {
     setStravaData(data);
     setLastStravaSync(new Date()); // Update last sync time
     
-    // Automatically import after successful sync
+    // Automatically import after successful sync, but suppress alert during auto-refresh
     console.log('Auto-importing Strava data to health metrics...');
-    await importStravaData();
+    await importStravaData(false);
+    
     
   } catch (error) {
     console.error('Error fetching Strava data:', error);
@@ -5093,7 +5094,7 @@ const fetchStravaData = async () => {
 };
   
   // Import Strava data to health metrics
-  const importStravaData = async () => {
+  const importStravaData = async (showAlert = true) => {
     if (!stravaService || !isStravaConnected || !auth.currentUser) {
       setError('Cannot import: Strava not connected or user not authenticated');
       return;
@@ -5103,7 +5104,15 @@ const fetchStravaData = async () => {
     
     try {
       const importCount = await stravaService.importToHealthMetrics(auth.currentUser.uid);
+
+    // Only show alert if showAlert is true AND there were actual imports
+    if (showAlert && importCount > 0) {
       alert(`Successfully imported ${importCount} activities from Strava`);
+    } else if (showAlert && importCount === 0) {
+      // Optional: provide feedback when manual import finds nothing to import
+      console.log('No new activities to import from Strava');
+      // You could use a less intrusive notification here if desired
+    }
       
       // Refresh health metrics
       fetchHealthMetrics();

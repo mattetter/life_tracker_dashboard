@@ -6,22 +6,23 @@ const VO2MaxGoalTracker = ({ goalData = {} }) => {
   const chartRef = useRef(null);
   const tooltipRef = useRef(null);
   
-  // Set default values for safety
   const { 
-    initial = 46, 
-    current = 48, 
+    initial = 40, 
+    current = 41, 
     target = 53, 
-    createdAt = new Date('2025-02-13').toISOString(), 
+    createdAt = new Date('2025-02-13').toISOString(),
+    startDate = new Date('2025-02-13').toISOString(), 
     targetDate = new Date('2025-04-10').toISOString()
   } = goalData;
   
-  const startDate = new Date(createdAt);
+  // Convert ISO strings to Date objects properly
+  const actualStartDate = new Date(startDate || createdAt);
   const endDate = new Date(targetDate);
   const today = new Date();
   
-  // Calculate key metrics
-  const totalDays = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24));
-  const daysElapsed = Math.round((today - startDate) / (1000 * 60 * 60 * 24));
+  // Calculate key metrics - FIX: ensure we're using Date objects for calculations
+  const totalDays = Math.round((endDate - actualStartDate) / (1000 * 60 * 60 * 24));
+  const daysElapsed = Math.round((today - actualStartDate) / (1000 * 60 * 60 * 24));
   const percentComplete = Math.min(1, Math.max(0, daysElapsed / totalDays));
   
   // Expected progress value for today (linear)
@@ -51,8 +52,8 @@ useEffect(() => {
     const weeksBetween = Math.max(1, Math.floor(daysElapsed / 7));
     
     for (let i = 0; i <= weeksBetween; i++) {
-      const date = new Date(startDate);
-      date.setDate(startDate.getDate() + (i * 7));
+        const date = new Date(actualStartDate);
+        date.setDate(actualStartDate.getDate() + (i * 7));
       
       // Don't go past today
       if (date > today) break;
@@ -69,7 +70,7 @@ useEffect(() => {
     }
     
     // Ensure today's exact value is included
-    if (actualData[actualData.length - 1].date < today) {
+    if (actualData.length === 0 || actualData[actualData.length - 1].date < today) {
       actualData.push({
         date: today,
         value: current,
@@ -87,7 +88,7 @@ useEffect(() => {
     // Expected trend data (start to end)
     const expectedData = [
       {
-        date: startDate,
+        date: actualStartDate,
         value: initial,
         type: 'expected'
       },
@@ -118,9 +119,9 @@ useEffect(() => {
       .attr("width", width)
       .attr("height", height);
   
-    // Create scales
+    // Create scales - FIX: make sure we're using Date objects 
     const xScale = d3.scaleTime()
-      .domain([startDate, endDate])
+      .domain([actualStartDate, endDate])
       .range([0, width]);
   
     // Find min and max Y values with some padding
@@ -133,11 +134,11 @@ useEffect(() => {
       
     // Create target zone area (light colored background area)
     const targetZone = [
-      { date: startDate, value: initial },
+      { date: actualStartDate, value: initial },
       { date: today, value: expectedCurrent },
       { date: endDate, value: target },
       { date: endDate, value: minValue },
-      { date: startDate, value: minValue }
+      { date: actualStartDate, value: minValue }
     ];
     
     svg.append("path")
@@ -146,7 +147,7 @@ useEffect(() => {
       .attr("d", d3.area()
         .x(d => xScale(d.date))
         .y0(d => {
-          if (d.date === startDate || d.date === endDate) {
+          if (d.date.getTime() === actualStartDate.getTime() || d.date.getTime() === endDate.getTime()) {
             return height;
           }
           return yScale(d.value);
@@ -283,7 +284,7 @@ useEffect(() => {
     
     // Add starting point
     svg.append("circle")
-      .attr("cx", xScale(startDate))
+      .attr("cx", xScale(actualStartDate))
       .attr("cy", yScale(initial))
       .attr("r", 5)
       .attr("fill", "#10b981")
@@ -315,7 +316,7 @@ useEffect(() => {
       .attr("y", height + 20)
       .attr("fill", "#9ca3af")
       .style("font-size", "12px")
-      .text(formatDate(startDate));
+      .text(formatDate(actualStartDate));
       
     svg.append("text")
       .attr("x", width)
@@ -367,7 +368,7 @@ useEffect(() => {
         tooltip.style("opacity", 0);
       });
       
-  }, [initial, current, target, createdAt, targetDate, startDate, endDate, today, expectedCurrent]);
+  }, [initial, current, target, actualStartDate, endDate, today, expectedCurrent, daysElapsed]);
 
 
   // Calculate days remaining
