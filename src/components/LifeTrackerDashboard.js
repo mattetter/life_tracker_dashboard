@@ -3469,8 +3469,12 @@ const renderDatabaseTab = () => {
 
 // Dynamic Daily Log Form Component Implementation
 const DailyLogForm = () => {
-  // State for form data - now empty by default
-  const [formData, setFormData] = useState({});
+  // State for form data - now with localStorage persistence
+  const [formData, setFormData] = useState(() => {
+    // Try to load saved draft from localStorage on initial render
+    const savedDraft = localStorage.getItem('dailyLogDraft');
+    return savedDraft ? JSON.parse(savedDraft) : {};
+  });
   
   // State for tracking if sections are expanded
   const [expandedSections, setExpandedSections] = useState({});
@@ -3478,6 +3482,11 @@ const DailyLogForm = () => {
   // State for daily log settings
   const [categories, setCategories] = useState([]);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  
+  // Auto-save draft to localStorage whenever formData changes
+  useEffect(() => {
+    localStorage.setItem('dailyLogDraft', JSON.stringify(formData));
+  }, [formData]);
   
   // Load settings from Firestore using a real-time listener
   useEffect(() => {
@@ -3513,30 +3522,36 @@ const DailyLogForm = () => {
                   return;
                 }
                 
-                // Set default values based on item type
-                switch (item.type) {
-                  case 'checkbox':
-                    initialFormData[item.id] = "No";
-                    break;
-                  case 'select':
-                    // Find the default (first) option
-                    if (item.options && item.options.length > 0) {
-                      initialFormData[item.id] = item.options[0].value;
-                    } else {
+                // Only set default values if not already in formData
+                if (formData[item.id] === undefined) {
+                  // Set default values based on item type
+                  switch (item.type) {
+                    case 'checkbox':
+                      initialFormData[item.id] = "No";
+                      break;
+                    case 'select':
+                      // Find the default (first) option
+                      if (item.options && item.options.length > 0) {
+                        initialFormData[item.id] = item.options[0].value;
+                      } else {
+                        initialFormData[item.id] = "";
+                      }
+                      break;
+                    case 'number':
+                      initialFormData[item.id] = item.defaultValue || 0;
+                      break;
+                    default:
                       initialFormData[item.id] = "";
-                    }
-                    break;
-                  case 'number':
-                    initialFormData[item.id] = item.defaultValue || 0;
-                    break;
-                  default:
-                    initialFormData[item.id] = "";
+                  }
                 }
               });
             });
             
-            // Initialize the form with these default values
-            setFormData(initialFormData);
+            // Merge with existing formData rather than replacing it
+            setFormData(prev => ({
+              ...initialFormData,
+              ...prev
+            }));
             
             // Initialize expanded sections state
             const initialExpandedSections = {};
@@ -3587,6 +3602,9 @@ const DailyLogForm = () => {
     e.preventDefault();
     await addDailyLog(formData);
     
+    // Clear the draft after successful submission
+    localStorage.removeItem('dailyLogDraft');
+    
     // Reset form after submission - get defaults from settings again
     const resetData = {};
     categories.forEach(category => {
@@ -3619,6 +3637,42 @@ const DailyLogForm = () => {
       resetExpandedSections[category.id] = false;
     });
     setExpandedSections(resetExpandedSections);
+  };
+  
+  // Function to discard the current draft
+  const handleDiscardDraft = () => {
+    if (Object.keys(formData).length > 0 && 
+        !window.confirm('Are you sure you want to discard your daily log draft?')) {
+      return;
+    }
+    
+    localStorage.removeItem('dailyLogDraft');
+    
+    // Reset to default values
+    const resetData = {};
+    categories.forEach(category => {
+      category.items.forEach(item => {
+        switch (item.type) {
+          case 'checkbox':
+            resetData[item.id] = "No";
+            break;
+          case 'select':
+            if (item.options && item.options.length > 0) {
+              resetData[item.id] = item.options[0].value;
+            } else {
+              resetData[item.id] = "";
+            }
+            break;
+          case 'number':
+            resetData[item.id] = item.defaultValue || 0;
+            break;
+          default:
+            resetData[item.id] = "";
+        }
+      });
+    });
+    
+    setFormData(resetData);
   };
   
   // Function to check if a field should be visible (for conditional fields)
@@ -3737,9 +3791,54 @@ const DailyLogForm = () => {
     );
   }
   
+  // Check if we have modified values that differ from defaults
+  const hasDraftChanges = () => {
+    let hasDifferences = false;
+    
+    categories.forEach(category => {
+      category.items.forEach(item => {
+        let defaultValue;
+        
+        // Determine the default value for this item type
+        switch (item.type) {
+          case 'checkbox':
+            defaultValue = "No";
+            break;
+          case 'select':
+            if (item.options && item.options.length > 0) {
+              defaultValue = item.options[0].value;
+            } else {
+              defaultValue = "";
+            }
+            break;
+          case 'number':
+            defaultValue = item.defaultValue || 0;
+            break;
+          default:
+            defaultValue = "";
+        }
+        
+        // Compare with current value
+        if (formData[item.id] !== undefined && formData[item.id] !== defaultValue) {
+          hasDifferences = true;
+        }
+      });
+    });
+    
+    return hasDifferences;
+  };
+  
   return (
     <div className="bg-gray-800 p-6 rounded-lg shadow-md mb-6 border border-gray-700">
-      <h3 className="text-xl font-semibold mb-4 text-gray-100">Add Daily Log Entry</h3>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xl font-semibold text-gray-100">Add Daily Log Entry</h3>
+        {hasDraftChanges() && (
+          <div className="text-xs bg-blue-900 text-blue-200 px-2 py-1 rounded">
+            Draft Saved
+          </div>
+        )}
+      </div>
+      
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Render each category */}
@@ -3808,7 +3907,7 @@ const DailyLogForm = () => {
           ))}
         </div>
         
-        <div className="mt-6 text-center">
+        <div className="mt-6 flex gap-2 justify-center">
           <button 
             type="submit" 
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -3816,6 +3915,17 @@ const DailyLogForm = () => {
           >
             {isLoading ? "Saving..." : "Save Daily Log"}
           </button>
+          
+          {hasDraftChanges() && (
+            <button 
+              type="button"
+              onClick={handleDiscardDraft}
+              className="px-6 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              disabled={isLoading}
+            >
+              Discard Draft
+            </button>
+          )}
         </div>
       </form>
     </div>
